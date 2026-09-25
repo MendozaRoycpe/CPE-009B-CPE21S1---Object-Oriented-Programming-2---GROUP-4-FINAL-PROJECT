@@ -102,3 +102,44 @@ data/
  ├── question_banks/      # Per-quiz MCQ/TF question files (e.g., QZ_101.csv)
  ├── sessions.csv         # Active student devices & timestamps
  └── professor_auth.csv   # SHA-256 hashed professor authentication credentials
+```
+
+
+<a name="-laptop-setup--team-collaboration"></a>
+## 💻 Laptop Setup & Team Collaboration Guide
+
+<details open>
+<summary><b>🤝 Step 1: GitHub Invitation & Authentication Setup</b></summary>
+<br>
+
+### 1. Accept Repository Invitation
+Click the link below to accept your invitation to collaborate:
+
+👉 **[Click Here to Accept GitHub Invitation](https://github.com/MendozaRoycpe/GROUP-4---STUDENT-QUIZ-SYSTEM/invitations)**
+
+### 2. Authenticate Git on Your Laptop (One-Time Setup)
+Open Terminal / Command Prompt and run these commands to link your laptop to your GitHub account:
+
+```bash
+git config --global user.name "Your GitHub Username"
+git config --global user.email "your_email@example.com"
+📥 How to Pull (Get Latest Team Changes)
+Run this command BEFORE starting any work on your laptop:
+
+Bash
+git pull origin main
+📤 How to Push (Upload Your Code to GitHub)
+Run these commands AFTER writing or updating features:
+
+Bash
+# 1. Check updated files
+git status
+
+# 2. Stage all changed files for upload
+git add .
+
+# 3. Commit changes with a descriptive message
+git commit -m "Added student login screen"
+
+# 4. Push updates to GitHub repository
+git push origin main
