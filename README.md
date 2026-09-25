@@ -2,7 +2,7 @@
 <div align="center">
 
 <a href="https://github.com/MendozaRoycpe">
-  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=24&pause=1000&color=007ACC&center=true&vCenter=true&width=600&lines=WELCOME+TO+OUR+REPOSITORY!;Group+4+%E2%80%A2+PyQuiz+OOPB+System;Python+3.14+%E2%80%A2+PyQt6+%E2%80%A2+Object-Oriented+Architecture" alt="Typing Effect" />
+  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=24&pause=1000&color=007ACC&center=true&vCenter=true&width=600&lines=WELCOME+TO+MY+REPOSITORY!;Group+4+%E2%80%A2+PyQuiz+OOPB+System;Python+3.14+%E2%80%A2+PyQt6+%E2%80%A2+Object-Oriented+Architecture" alt="Typing Effect" />
 </a>
 
 <br><br>
@@ -21,11 +21,11 @@
   <a href="#-data-entities--storage-schema">
     <img src="https://img.shields.io/badge/📂_Data_Schema-View-FF8C00?style=for-the-badge&logo=sqlite&logoColor=white" alt="Schema">
   </a>
-  <a href="#-screen-map--gui-workflows">
-    <img src="https://img.shields.io/badge/🖥️_GUI_Screen_Map-View-8A2BE2?style=for-the-badge&logo=qt&logoColor=white" alt="GUI Map">
+  <a href="#-laptop-setup--step-by-step-guide">
+    <img src="https://img.shields.io/badge/💻_Laptop_Setup_Guide-View-28A745?style=for-the-badge&logo=github&logoColor=white" alt="Setup">
   </a>
-  <a href="#-local-execution--standalone-compilation">
-    <img src="https://img.shields.io/badge/⚡_Compilation_%26_Usage-View-28A745?style=for-the-badge&logo=github&logoColor=white" alt="Compilation">
+  <a href="#-implementation-roadmap">
+    <img src="https://img.shields.io/badge/🚧_Implementation_Roadmap-View-8A2BE2?style=for-the-badge&logo=qt&logoColor=white" alt="Roadmap">
   </a>
 </p>
 
