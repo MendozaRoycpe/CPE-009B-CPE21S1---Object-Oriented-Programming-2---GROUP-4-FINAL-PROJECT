@@ -143,3 +143,35 @@ git commit -m "Added student login screen"
 
 # 4. Push updates to GitHub repository
 git push origin main
+```
+<details open>
+<summary><b>🔗 Linking a Local Folder to GitHub</b></summary>
+<br>
+
+### Option 1: Linking an Existing Local Folder to GitHub
+If you already have code files on your laptop and want to connect that folder to your remote GitHub repository:
+
+```
+bash
+# 1. Open terminal inside your local project folder
+cd "path/to/your/local/folder"
+
+# 2. Initialize local Git repository (if not already initialized)
+git init
+
+# 3. Set your main branch name to main
+git branch -M main
+
+# 4. Link your local folder to your GitHub repository
+git remote add origin [https://github.com/MendozaRoycpe/GROUP-4---STUDENT-QUIZ-SYSTEM.git](https://github.com/MendozaRoycpe/GROUP-4---STUDENT-QUIZ-SYSTEM.git)
+
+# 5. Verify the remote connection
+git remote -v
+
+# 6. Fetch and merge remote files (e.g., README.md) before pushing
+git pull origin main --allow-unrelated-histories
+
+# 7. Stage, commit, and push your local files
+git add .
+git commit -m "Initial commit from local folder"
+git push -u origin main
