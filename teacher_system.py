@@ -1,4 +1,4 @@
-import sys, csv, os, hashlib
+import sys, csv, os, hashlib, json
 from datetime import datetime
 from PyQt6.QtWidgets import QWidget, QApplication, QPushButton, QLineEdit, QLabel, QMessageBox, QTableWidget, QTableWidgetItem, QFileDialog, QComboBox, QSpinBox, QDialog, QFormLayout, QDialogButtonBox, QVBoxLayout, QHBoxLayout, QHeaderView, QInputDialog, QAbstractItemView
 from PyQt6.QtCore import Qt
@@ -25,7 +25,10 @@ from PyQt6.QtCore import Qt
 #                       add_student(), import_students(), edit_grade(),
 #                       delete_student(), reopen_quiz(), lock_grade(),
 #                       quiz_manager(), logout()
-# - QuizManagerWindow: __init__(), load_table(), create_quiz(), toggle_publish(), delete_quiz()
+# - QuizManagerWindow: __init__(), load_table(), create_quiz(), toggle_publish(), delete_quiz(),
+#                       manage_questions()
+# - QuestionDialog: __init__(), toggle_choice_fields(), get_data()
+# - QuestionManagerWindow: __init__(), load_list(), add_question()
 #xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # File settings / configurations
@@ -36,10 +39,14 @@ QUIZZES_FILE = os.path.join(DATA_FOLDER, "quizzes.csv")
 AUTH_FILE = os.path.join(DATA_FOLDER, "professor_auth.csv") #<--NOTE: para sa professor password hash, if gagawa ng bagong professor password,
 #palitan lang yung default na "jabaiskript" sa ensure_files() function, tapos buksan nyo yung sa data na folder? then delete yung professor_auth.csv 
 # para ma-generate ulit sa bagong password hash
-SESSIONS_FILE = os.path.join(DATA_FOLDER, "sessions.csv")
+SESSIONS_FILE = os.path.join(DATA_FOLDER, "sessions.csv") # <-- NOTE: isang row dito = isang currently-logged-in student (one device per ID rule)
+CONFLICTS_FILE = os.path.join(DATA_FOLDER, "session_conflicts.csv") # <-- NOTE: dito nakikita ng professor kung may sumubok mag-login gamit ang ID na naka-active na sa ibang device
+QUESTIONS_FOLDER = os.path.join(DATA_FOLDER, "questions") # <-- NOTE: isang json file per quiz_id, dito nakatago yung mga tanong (MCQ/TF)
 
 DEFAULT_STUDENT_FIELDS = ["student_id", "name"]
 QUIZ_FIELDS = ["quiz_id", "title", "category", "max_item", "time_limit_minutes", "published", "date_published"]
+SESSION_FIELDS = ["student_id", "device_id", "started_at"]
+CONFLICT_FIELDS = ["student_id", "device_id", "attempted_at"]
 
 # gawa ng data folder tapos initialize lang ng default csv files kung wala pa
 def ensure_files():
@@ -62,6 +69,16 @@ def ensure_files():
             writer.writeheader()
             writer.writerow({"password_hash": hash_password("jabaiskript")})
 
+    if not os.path.isfile(SESSIONS_FILE):
+        with open(SESSIONS_FILE, "w", newline="", encoding="utf-8") as file:
+            csv.DictWriter(file, fieldnames=SESSION_FIELDS).writeheader()
+
+    if not os.path.isfile(CONFLICTS_FILE):
+        with open(CONFLICTS_FILE, "w", newline="", encoding="utf-8") as file:
+            csv.DictWriter(file, fieldnames=CONFLICT_FIELDS).writeheader()
+
+    os.makedirs(QUESTIONS_FOLDER, exist_ok=True)
+
 # para ma-hash string yung password using sha256 para safe;;; thanks online sources
 def hash_password(password):
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
@@ -79,10 +96,16 @@ def write_csv(filename, rows, fieldnames):
         writer.writeheader()
         writer.writerows(rows)
 
-# kukunin lang yung mga headers or column fields ng student records
+# kukunin lang yung mga headers or column fields ng student records — binabasa direkta
+# ang header row mula sa file (hindi galing sa unang data row), kaya tama pa rin ito kahit
+# zero pa lang ang naka-save na estudyante sa csv (dati, na-drop nito ang mga quiz/locked_
+# columns sa ganitong sitwasyon dahil wala pang data row na pagkukunan)
 def get_student_fields():
-    students = read_csv(STUDENTS_FILE)
-    return list(students[0].keys()) if students else DEFAULT_STUDENT_FIELDS.copy()
+    if not os.path.isfile(STUDENTS_FILE):
+        return DEFAULT_STUDENT_FIELDS.copy()
+    with open(STUDENTS_FILE, "r", newline="", encoding="utf-8") as file:
+        header = next(csv.reader(file), None)
+    return header if header else DEFAULT_STUDENT_FIELDS.copy()
 
 # kuhanin lahat ng student records sa csv
 def load_students():
@@ -109,6 +132,23 @@ def load_quizzes():
 # save ng list ng quiz data pabalik sa csv
 def save_quizzes(quizzes):
     write_csv(QUIZZES_FILE, quizzes, QUIZ_FIELDS)
+
+# kukuha ng buong file path ng json na naglalaman ng mga tanong para sa isang partikular na quiz_id
+def questions_path(quiz_id):
+    os.makedirs(QUESTIONS_FOLDER, exist_ok=True)
+    return os.path.join(QUESTIONS_FOLDER, f"{quiz_id}.json")
+
+# i-loload yung listahan ng mga questions (MCQ/TF dicts) para sa quiz_id na ibinigay
+def load_questions(quiz_id):
+    path = questions_path(quiz_id)
+    if not os.path.isfile(path): return []
+    with open(path, "r", encoding="utf-8") as file:
+        return json.load(file)
+
+# i-save pabalik yung listahan ng mga questions sa json file ng quiz_id
+def save_questions(quiz_id, questions):
+    with open(questions_path(quiz_id), "w", encoding="utf-8") as file:
+        json.dump(questions, file, indent=2)
 
 # modal dialog pop-up para sa pag add ng bagong student
 class AddStudentDialog(QDialog):
@@ -158,6 +198,58 @@ class QuizDialog(QDialog):
     # ibabalik yung dictionary na naglalaman ng quiz info
     def get_data(self):
         return {"quiz_id": self.quiz_id.text().strip(), "title": self.title.text().strip(), "category": self.category.currentText(), "max_item": str(self.max_item.value()), "time_limit_minutes": str(self.time_limit.value())}
+
+# modal dialog pop-up para sa pag-add ng isang tanong (MCQ o True/False) sa isang quiz
+class QuestionDialog(QDialog):
+    # setup ng input fields: tanong, type, choices, at kung alin ang tamang sagot
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Add Question")
+        self.setFixedSize(450, 340)
+        layout = QFormLayout(self)
+
+        self.text_input = QLineEdit()
+        layout.addRow("Question Text:", self.text_input)
+
+        self.type_box = QComboBox()
+        self.type_box.addItems(["MCQ", "TF"])
+        self.type_box.currentTextChanged.connect(self.toggle_choice_fields)
+        layout.addRow("Type:", self.type_box)
+
+        self.choice_inputs = [QLineEdit() for _ in range(4)]
+        self.choice_rows = []
+        for i, box in enumerate(self.choice_inputs):
+            box.setPlaceholderText(f"Choice {i + 1}")
+            layout.addRow(f"Choice {i + 1}:", box)
+
+        self.correct_box = QSpinBox() # <-- NOTE: 1-based sa UI para madali intindihin, ico-convert na lang sa 0-based index pag sine-save
+        self.correct_box.setRange(1, 4)
+        layout.addRow("Correct Choice # (1=True for TF):", self.correct_box)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addRow(buttons)
+
+        self.toggle_choice_fields(self.type_box.currentText())
+
+    # itinatago yung mga extra choice text boxes kapag True/False lang ang tanong
+    def toggle_choice_fields(self, qtype):
+        is_mcq = qtype == "MCQ"
+        for box in self.choice_inputs:
+            box.setVisible(is_mcq)
+        self.correct_box.setRange(1, 4 if is_mcq else 2)
+
+    # ibabalik yung dictionary representation ng tanong, depende sa type
+    def get_data(self):
+        qtype = self.type_box.currentText()
+        text = self.text_input.text().strip()
+        if qtype == "MCQ":
+            choices = [box.text().strip() for box in self.choice_inputs if box.text().strip()]
+        else:
+            choices = ["True", "False"]
+        correct_index = self.correct_box.value() - 1
+        return {"qtype": qtype, "text": text, "choices": choices, "correct_index": correct_index}
 
 # login window para sa prof authentication
 class ProfessorLogin(QWidget):
@@ -514,13 +606,15 @@ class QuizManagerWindow(QDialog):
         button_layout = QHBoxLayout()
         create_button, publish_button = QPushButton("Create Quiz"), QPushButton("Publish / Unpublish")
         delete_button, refresh_button = QPushButton("Delete Quiz"), QPushButton("Refresh")
+        questions_button = QPushButton("Manage Questions")
 
         create_button.clicked.connect(self.create_quiz)
         publish_button.clicked.connect(self.toggle_publish)
         delete_button.clicked.connect(self.delete_quiz)
         refresh_button.clicked.connect(self.load_table)
+        questions_button.clicked.connect(self.manage_questions)
 
-        for btn in (create_button, publish_button, delete_button, refresh_button):
+        for btn in (create_button, questions_button, publish_button, delete_button, refresh_button):
             button_layout.addWidget(btn)
 
         layout.addLayout(button_layout)
@@ -569,7 +663,20 @@ class QuizManagerWindow(QDialog):
             write_csv(STUDENTS_FILE, students, fields)
 
         self.load_table()
-        QMessageBox.information(self, "Quiz Created", "Quiz created successfully.\nQuestion-bank entry can be connected in the next stage.")
+        QMessageBox.information(self, "Quiz Created", "Quiz created successfully.\nUse \"Manage Questions\" to build its question bank before publishing.")
+
+    # bubukas ng question manager window para sa currently selected quiz row
+    def manage_questions(self):
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "No Quiz Selected", "Select a quiz first.")
+            return
+
+        quizzes = load_quizzes()
+        if row >= len(quizzes): return
+
+        quiz = quizzes[row]
+        QuestionManagerWindow(quiz["quiz_id"], quiz["title"], self).exec()
 
     # para mag-palit/toggle sa publish or unpublish state ng napiling quiz
     def toggle_publish(self):
@@ -585,6 +692,11 @@ class QuizManagerWindow(QDialog):
         if quiz["published"] == "yes":
             quiz["published"], quiz["date_published"] = "no", ""
         else:
+            question_count = len(load_questions(quiz["quiz_id"])) # <-- NOTE: hinaharang dito ang publish hangga't wala pang 10 tanong
+            if question_count < 10:
+                QMessageBox.warning(self, "Not Enough Questions",
+                    f"'{quiz['title']}' only has {question_count} question(s) saved. Add at least 10 via \"Manage Questions\" before publishing.")
+                return
             quiz["published"] = "yes"
             quiz["date_published"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -610,7 +722,57 @@ class QuizManagerWindow(QDialog):
         self.load_table()
         QMessageBox.information(self, "Quiz Deleted", "Quiz metadata has been deleted.")
 
+# dialog window para sa pag-view at pag-add ng mga tanong ng isang partikular na quiz
+class QuestionManagerWindow(QDialog):
+    # setup ng table view tsaka buttons para sa question bank ng quiz_id na ibinigay
+    def __init__(self, quiz_id, quiz_title, parent=None):
+        super().__init__(parent)
+        self.quiz_id = quiz_id
+        self.setWindowTitle(f"Questions — {quiz_title}")
+        self.setMinimumSize(500, 450)
+        layout = QVBoxLayout(self)
 
+        self.count_label = QLabel()
+        layout.addWidget(self.count_label)
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(2)
+        self.table.setHorizontalHeaderLabels(["Type", "Question"])
+        layout.addWidget(self.table)
+
+        button_layout = QHBoxLayout()
+        add_button = QPushButton("Add Question", clicked=self.add_question)
+        close_button = QPushButton("Close", clicked=self.accept)
+        button_layout.addWidget(add_button)
+        button_layout.addWidget(close_button)
+        layout.addLayout(button_layout)
+
+        self.load_list()
+
+    # irerender yung listahan ng mga tanong na naka-save na para sa quiz na ito
+    def load_list(self):
+        questions = load_questions(self.quiz_id)
+        self.count_label.setText(f"{len(questions)} question(s) saved. (Minimum 10 required before publishing.)")
+        self.table.setRowCount(len(questions))
+        for row, question in enumerate(questions):
+            self.table.setItem(row, 0, QTableWidgetItem(question.get("qtype", "")))
+            self.table.setItem(row, 1, QTableWidgetItem(question.get("text", "")))
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+
+    # lalabas yung dialog para makapag-add ng panibagong tanong sa quiz na ito
+    def add_question(self):
+        dialog = QuestionDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted: return
+        data = dialog.get_data()
+
+        if not data["text"] or len(data["choices"]) < 2:
+            QMessageBox.warning(self, "Missing Information", "Enter the question text and at least 2 choices.")
+            return
+
+        questions = load_questions(self.quiz_id)
+        questions.append(data)
+        save_questions(self.quiz_id, questions)
+        self.load_list()
 
 
 # EXECUTE ORDER66
