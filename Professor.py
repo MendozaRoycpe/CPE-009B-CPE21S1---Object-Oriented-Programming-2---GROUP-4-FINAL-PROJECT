@@ -13,7 +13,7 @@ class QuestionEditorDialog(QDialog):
         super().__init__(parent)
         self.setStyleSheet(QUIZZIZ_STYLE)
         self.setWindowTitle("Edit Question" if question_data else "Add New Question")
-        self.setMinimumSize(500, 450)
+        self.setMinimumSize(500, 500)
         self.question_data = question_data or {}
         self.init_ui()
 
@@ -21,12 +21,27 @@ class QuestionEditorDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setSpacing(12)
 
+        # Question Type Selector
+        layout.addWidget(QLabel("<b>Question Type:</b>"))
+        self.cmb_type = QComboBox()
+        self.cmb_type.addItems(["Multiple Choice (4 Options)", "True / False"])
+        
+        # Detect type if editing
+        opts = self.question_data.get("options", ["", "", "", ""])
+        if len(opts) == 2 or (len(opts) == 4 and opts[0] == "True" and opts[1] == "False" and not opts[2] and not opts[3]):
+            self.cmb_type.setCurrentIndex(1)
+            
+        self.cmb_type.currentIndexChanged.connect(self.on_type_changed)
+        layout.addWidget(self.cmb_type)
+
+        # Question Text
         layout.addWidget(QLabel("<b>Question Text:</b>"))
         self.txt_q = QTextEdit()
         self.txt_q.setPlaceholderText("Enter question prompt here...")
         self.txt_q.setPlainText(self.question_data.get("question", ""))
         layout.addWidget(self.txt_q)
 
+        # Answer Choices
         layout.addWidget(QLabel("<b>Answer Choices:</b>"))
         self.option_inputs = []
         existing_options = self.question_data.get("options", ["", "", "", ""])
@@ -39,12 +54,12 @@ class QuestionEditorDialog(QDialog):
             self.option_inputs.append(inp)
             layout.addWidget(inp)
 
-        layout.addWidget(QLabel("<b>Correct Answer Index:</b>"))
+        # Correct Answer Dropdown
+        layout.addWidget(QLabel("<b>Correct Answer:</b>"))
         self.cmb_correct = QComboBox()
-        self.cmb_correct.addItems(["Option 1", "Option 2", "Option 3", "Option 4"])
-        self.cmb_correct.setCurrentIndex(self.question_data.get("correct_option_index", 0))
         layout.addWidget(self.cmb_correct)
 
+        # Buttons
         btn_box = QHBoxLayout()
         btn_save = QPushButton("Save Question")
         btn_save.clicked.connect(self.save)
@@ -56,12 +71,50 @@ class QuestionEditorDialog(QDialog):
         btn_box.addWidget(btn_save)
         layout.addLayout(btn_box)
 
+        self.on_type_changed()
+
+    def on_type_changed(self):
+        is_tf = self.cmb_type.currentIndex() == 1
+        
+        if is_tf:
+            self.option_inputs[0].setText("True")
+            self.option_inputs[1].setText("False")
+            self.option_inputs[0].setEnabled(False)
+            self.option_inputs[1].setEnabled(False)
+            self.option_inputs[2].hide()
+            self.option_inputs[3].hide()
+
+            self.cmb_correct.clear()
+            self.cmb_correct.addItems(["Option 1: True", "Option 2: False"])
+        else:
+            self.option_inputs[0].setEnabled(True)
+            self.option_inputs[1].setEnabled(True)
+            self.option_inputs[2].show()
+            self.option_inputs[3].show()
+
+            if self.option_inputs[0].text() == "True":
+                self.option_inputs[0].clear()
+            if self.option_inputs[1].text() == "False":
+                self.option_inputs[1].clear()
+
+            self.cmb_correct.clear()
+            self.cmb_correct.addItems(["Option 1", "Option 2", "Option 3", "Option 4"])
+
+        curr_idx = self.question_data.get("correct_option_index", 0)
+        if curr_idx < self.cmb_correct.count():
+            self.cmb_correct.setCurrentIndex(curr_idx)
+
     def save(self):
         q_text = self.txt_q.toPlainText().strip()
-        options = [inp.text().strip() for inp in self.option_inputs]
+        is_tf = self.cmb_type.currentIndex() == 1
+
+        if is_tf:
+            options = ["True", "False"]
+        else:
+            options = [inp.text().strip() for inp in self.option_inputs]
 
         if not q_text or any(not opt for opt in options):
-            QMessageBox.warning(self, "Validation Error", "Please fill in the question and all 4 options.")
+            QMessageBox.warning(self, "Validation Error", "Please fill in the question and options.")
             return
 
         self.question_data = {
@@ -219,7 +272,7 @@ class ProfessorDashboard(QWidget):
         btn_edit_q = QPushButton("✏️ Edit Questions & Content")
         btn_edit_q.clicked.connect(self.manage_questions)
 
-        btn_delete_quiz = QPushButton("🗑️️ Delete Quiz")
+        btn_delete_quiz = QPushButton("🗑 Delete Quiz")
         btn_delete_quiz.setObjectName("BtnDanger")
         btn_delete_quiz.clicked.connect(self.delete_quiz)
 
