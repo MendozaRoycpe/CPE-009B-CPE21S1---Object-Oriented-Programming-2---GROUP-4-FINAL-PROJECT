@@ -4,16 +4,16 @@ import csv
 import json
 import hashlib
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QDialog, QVBoxLayout, QHBoxLayout, 
     QLabel, QLineEdit, QPushButton, QMessageBox, QTableWidget, QTableWidgetItem, 
     QComboBox, QTextEdit, QFrame, QHeaderView, QRadioButton, QButtonGroup, 
-    QProgressBar, QStackedWidget
+    QProgressBar, QStackedWidget, QSizePolicy, QScrollArea
 )
 from PyQt6.QtCore import Qt, QTimer, QRegularExpression, QEvent
-from PyQt6.QtGui import QRegularExpressionValidator, QIcon, QPixmap, QColor
+from PyQt6.QtGui import QRegularExpressionValidator, QIcon, QPixmap, QColor, QResizeEvent
 
 # ==========================================
 # FILE PATHS & STORAGE INITIALIZATION
@@ -30,17 +30,31 @@ SESSIONS_CSV = os.path.join(DATA_DIR, "sessions.csv")
 CONFLICTS_CSV = os.path.join(DATA_DIR, "conflicts.csv")
 
 STUDENT_FIELDS = ["student_id", "first_name", "last_name", "email", "password_hash", "status"]
-QUIZ_FIELDS = ["quiz_id", "title", "subject", "total_questions", "duration_minutes"]
-SESSION_FIELDS = ["session_id", "student_id", "quiz_id", "score", "date_taken", "tab_switches"]
+QUIZ_FIELDS = ["quiz_id", "title", "subject", "total_questions", "duration_minutes", "date_published"]
+SESSION_FIELDS = ["session_id", "student_id", "quiz_id", "score", "date_taken", "tab_switches", "remarks"]
 CONFLICT_FIELDS = ["conflict_id", "student_id", "issue_type", "description", "timestamp", "status"]
 
 # ==========================================
-# ICON LOADER FUNCTION
+# HELPER FUNCTIONS
 # ==========================================
-POSSIBLE_ICONS = ["icon.png", "icon.webp", "icon.jpg", "icon.ico"]
+def get_spaced_now() -> str:
+    return datetime.now().strftime("%Y - %m - %d   %H : %M")
+
+def calculate_remarks(score: int, total: int) -> str:
+    if total <= 0:
+        return "N / A"
+    percentage = (score / total) * 100
+    if percentage >= 90:
+        return "Excellent"
+    elif percentage >= 75:
+        return "Good"
+    elif percentage >= 50:
+        return "Fair"
+    else:
+        return "Poor"
 
 def load_app_icon():
-    for name in POSSIBLE_ICONS:
+    for name in ["icon.png", "icon.webp", "icon.jpg", "icon.ico"]:
         path = os.path.join(BASE_DIR, name)
         if os.path.exists(path):
             return path
@@ -103,7 +117,7 @@ QPushButton {
     color: #ffffff;
     font-weight: 700;
     border-radius: 10px;
-    padding: 10px 18px;
+    padding: 12px 20px;
     border: none;
 }
 QPushButton:hover {
@@ -128,6 +142,31 @@ QPushButton#BtnSecondary {
 QPushButton#BtnSecondary:hover {
     background-color: #334155;
     color: #ffffff;
+}
+
+QPushButton#BtnNumUnanswered {
+    background-color: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-weight: bold;
+}
+QPushButton#BtnNumAnswered {
+    background-color: #10b981;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-weight: bold;
+}
+QPushButton#BtnNumCurrent {
+    background-color: #6366f1;
+    color: #ffffff;
+    border: 2px solid #818cf8;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-weight: bold;
 }
 
 QLineEdit, QComboBox, QTextEdit {
@@ -196,7 +235,7 @@ def hash_pass(pwd: str) -> str:
     return hashlib.sha256(pwd.encode()).hexdigest()
 
 # ==========================================
-# AUTOMATIC 30-QUESTION GENERATOR
+# QUESTION GENERATOR
 # ==========================================
 QUESTION_BANK_MC = [
     ("Which data structure operates on a First In, First Out (FIFO) protocol?", ["Stack", "Queue", "Binary Tree", "Hash Map"], 1),
@@ -217,20 +256,16 @@ QUESTION_BANK_MC = [
     ("In geometry, what is the sum of interior angles in a triangle?", ["180°", "360°", "90°", "270°"], 0),
     ("Which unit measures electrical resistance in a circuit?", ["Volt", "Ampere", "Ohm", "Watt"], 2),
     ("What primary energy source powers the Earth's climate system?", ["The Moon", "Geothermal Core", "The Sun", "Ocean Currents"], 2),
-    ("Which organelle is considered the 'powerhouse' of a eukaryotic cell?", ["Ribosome", "Mitochondria", "Nucleus", "Lysosome"], 1),
-    ("What is the smallest prime number?", ["0", "1", "2", "3"], 2),
-    ("Which sorting algorithm has an average time complexity of O(n log n)?", ["Bubble Sort", "Quick Sort", "Insertion Sort", "Selection Sort"], 1),
-    ("What layer of the OSI model handles end-to-end packet transport?", ["Physical Layer", "Network Layer", "Transport Layer", "Application Layer"], 2),
 ]
 
 QUESTION_BANK_TF = [
     ("Python tuples are immutable sequence structures.", ["True", "False"], 0),
     ("In binary representation, the number 10 corresponds to the decimal number 2.", ["True", "False"], 0),
-    ("RAM retains stored data even when the computer is completely powered off.", ["True", "False"], 1),
+    ("RAM retains stored data even when the computer is powered off.", ["True", "False"], 1),
     ("HTTP operates on top of the TCP/IP transport protocol stack.", ["True", "False"], 0),
     ("An equilateral triangle has three sides of different lengths.", ["True", "False"], 1),
     ("Light travels faster than sound in a vacuum.", ["True", "False"], 0),
-    ("The atomic number of an element corresponds to the number of protons in its nucleus.", ["True", "False"], 0),
+    ("The atomic number corresponds to the number of protons in an atomic nucleus.", ["True", "False"], 0),
     ("DNA stands for Deoxyribonucleic Acid.", ["True", "False"], 0),
     ("Solid ice is less dense than liquid water, causing it to float.", ["True", "False"], 0),
     ("A leap year in the Gregorian calendar contains 366 total days.", ["True", "False"], 0),
@@ -238,9 +273,10 @@ QUESTION_BANK_TF = [
 
 def generate_auto_questions(count=30):
     questions = []
-    
-    # Pool 20 Multiple Choice Questions
-    mc_selected = random.sample(QUESTION_BANK_MC, min(20, len(QUESTION_BANK_MC)))
+    mc_count = int(count * 0.7)
+    tf_count = count - mc_count
+
+    mc_selected = random.sample(QUESTION_BANK_MC, min(mc_count, len(QUESTION_BANK_MC)))
     for q_txt, opts, c_idx in mc_selected:
         questions.append({
             "type": "mc",
@@ -249,8 +285,7 @@ def generate_auto_questions(count=30):
             "correct_option_index": c_idx
         })
 
-    # Pool 10 True/False Questions
-    tf_selected = random.sample(QUESTION_BANK_TF, min(10, len(QUESTION_BANK_TF)))
+    tf_selected = random.sample(QUESTION_BANK_TF, min(tf_count, len(QUESTION_BANK_TF)))
     for q_txt, opts, c_idx in tf_selected:
         questions.append({
             "type": "tf",
@@ -259,7 +294,6 @@ def generate_auto_questions(count=30):
             "correct_option_index": c_idx
         })
 
-    # Shuffle to interleave MC and T/F
     random.shuffle(questions)
     return questions[:count]
 
@@ -286,15 +320,15 @@ def initialize_storage():
             writer.writeheader()
             writer.writerow({"password_hash": hash_pass("jabaiskript")})
 
-    # Seed Default 30-item Quizzes if empty
     quizzes = read_data(QUIZZES_CSV)
     if not quizzes:
+        spaced_date = get_spaced_now()
         q_rows = [
-            {"quiz_id": "QUIZ_001", "title": "Comprehensive CS & Science Assessment", "subject": "General", "total_questions": "30", "duration_minutes": "30"},
-            {"quiz_id": "QUIZ_002", "title": "Midterm Exam - STEM Fundamentals", "subject": "STEM", "total_questions": "30", "duration_minutes": "25"}
+            {"quiz_id": "QUIZ_001", "title": "Comprehensive CS & Science Assessment", "subject": "General", "total_questions": "30", "duration_minutes": "30", "date_published": spaced_date},
+            {"quiz_id": "QUIZ_002", "title": "Midterm Exam - STEM Fundamentals", "subject": "STEM", "total_questions": "20", "duration_minutes": "20", "date_published": spaced_date}
         ]
         for q in q_rows:
-            qs = generate_auto_questions(30)
+            qs = generate_auto_questions(int(q["total_questions"]))
             q_path = os.path.join(QUESTIONS_DIR, f"{q['quiz_id']}.json")
             with open(q_path, "w", encoding="utf-8") as f:
                 json.dump(qs, f, indent=2)
@@ -340,7 +374,7 @@ class FullscreenPromptDialog(QDialog):
         self.setStyleSheet(APP_STYLE)
         self.setWindowTitle("Quiz Portal")
         apply_icon(self)
-        self.setFixedWidth(440)
+        self.setFixedWidth(460)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -361,16 +395,21 @@ class FullscreenPromptDialog(QDialog):
         title.setStyleSheet("font-size: 17px; color: #818cf8;")
         c_layout.addWidget(title)
 
-        info = QLabel(f"⏱️ Duration: <b>{duration} Mins</b>  |  ❓ Questions: <b>{total_q} Items</b>")
+        end_time_str = (datetime.now() + timedelta(minutes=int(duration))).strftime("%I:%M %p")
+        info = QLabel(
+            f"⏱️ Allocated Duration: <b>{duration} Minutes</b><br>"
+            f"🕒 Estimated Completion Time: <b>Ends at {end_time_str}</b><br>"
+            f"❓ Questions Count: <b>{total_q} Items</b>"
+        )
         info.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        info.setStyleSheet("color: #cbd5e1; font-size: 13px;")
+        info.setStyleSheet("color: #cbd5e1; font-size: 13px; line-height: 1.4;")
         c_layout.addWidget(info)
 
         rules = QLabel(
             "<b>Proctoring Guidelines:</b><br>"
             "1. This quiz will open locked in <b>FULLSCREEN MODE</b>.<br>"
             "2. Focus shifts or tab switching (<b>Alt + Tab</b>) are strictly recorded.<br>"
-            "3. Ensure all non-essential applications are closed before proceeding."
+            "3. Ensure all questions are answered before submitting."
         )
         rules.setStyleSheet("color: #94a3b8; font-size: 12px; margin-top: 6px;")
         rules.setWordWrap(True)
@@ -381,9 +420,11 @@ class FullscreenPromptDialog(QDialog):
         btns = QHBoxLayout()
         btn_cancel = QPushButton("Cancel")
         btn_cancel.setObjectName("BtnSecondary")
+        btn_cancel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_cancel.clicked.connect(self.reject)
 
         btn_start = QPushButton("Enter Fullscreen & Start")
+        btn_start.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_start.setStyleSheet("padding: 12px;")
         btn_start.clicked.connect(self.accept)
 
@@ -393,7 +434,7 @@ class FullscreenPromptDialog(QDialog):
 
 
 # ==========================================
-# AUTHENTICATION WINDOW
+# AUTHENTICATION WINDOW (ENTER KEY ENABLED FOR PROFESSOR)
 # ==========================================
 class LoginWindow(QDialog):
     def __init__(self, parent=None):
@@ -427,6 +468,9 @@ class LoginWindow(QDialog):
         self.btn_student.setCheckable(True)
         self.btn_prof.setCheckable(True)
 
+        self.btn_student.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.btn_prof.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
         self.btn_student.clicked.connect(self.set_student)
         self.btn_prof.clicked.connect(self.set_prof)
 
@@ -446,7 +490,7 @@ class LoginWindow(QDialog):
         self.txt_lname = QLineEdit()
         s_layout.addWidget(self.txt_lname)
 
-        s_layout.addWidget(QLabel("Student ID:"))
+        s_layout.addWidget(QLabel("Student ID (Optional - Auto Generated if blank):"))
         self.txt_id = QLineEdit()
         self.txt_id.setValidator(QRegularExpressionValidator(QRegularExpression("^[0-9]+$")))
         s_layout.addWidget(self.txt_id)
@@ -458,6 +502,7 @@ class LoginWindow(QDialog):
         s_layout.addWidget(QLabel("Password:"))
         self.txt_pass = QLineEdit()
         self.txt_pass.setEchoMode(QLineEdit.EchoMode.Password)
+        self.txt_pass.returnPressed.connect(self.login)
         s_layout.addWidget(self.txt_pass)
 
         p_layout.addWidget(self.student_box)
@@ -469,11 +514,14 @@ class LoginWindow(QDialog):
         pr_layout.addWidget(QLabel("Professor Security Password:"))
         self.txt_prof_pass = QLineEdit()
         self.txt_prof_pass.setEchoMode(QLineEdit.EchoMode.Password)
+        # BIND ENTER KEY PRESS DIRECTLY TO LOGIN ACTION
+        self.txt_prof_pass.returnPressed.connect(self.login)
         pr_layout.addWidget(self.txt_prof_pass)
 
         p_layout.addWidget(self.prof_box)
 
         self.btn_login = QPushButton("Authenticate Session")
+        self.btn_login.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.btn_login.clicked.connect(self.login)
         p_layout.addWidget(self.btn_login)
 
@@ -500,6 +548,7 @@ class LoginWindow(QDialog):
         self.btn_prof.setStyle(self.btn_prof.style())
         self.student_box.hide()
         self.prof_box.show()
+        self.txt_prof_pass.setFocus()
         self.adjustSize()
 
     def login(self):
@@ -510,13 +559,17 @@ class LoginWindow(QDialog):
             em = self.txt_email.text().strip()
             pwd = self.txt_pass.text().strip()
 
-            if not fn or not ln or not sid or not em or not pwd:
-                QMessageBox.warning(self, "Validation Error", "Please fill in all student credential fields.")
+            if not fn or not ln or not em or not pwd:
+                QMessageBox.warning(self, "Validation Error", "Please fill in First Name, Last Name, Email, and Password.")
                 return
 
             students = read_data(STUDENTS_CSV)
             pwd_h = hash_pass(pwd)
-            existing = next((s for s in students if s.get("student_id") == sid), None)
+
+            if not sid:
+                sid = f"STU{len(students) + 1:04d}"
+
+            existing = next((s for s in students if s.get("student_id") == sid or s.get("email") == em), None)
 
             if existing:
                 if existing.get("password_hash") != pwd_h:
@@ -555,7 +608,7 @@ class LoginWindow(QDialog):
 
 
 # ==========================================
-# GRADEBOOK & AUDIT DIALOG
+# GRADEBOOK DIALOG
 # ==========================================
 class GradebookDialog(QDialog):
     def __init__(self, student_id=None, parent=None):
@@ -563,7 +616,7 @@ class GradebookDialog(QDialog):
         self.setStyleSheet(APP_STYLE)
         self.setWindowTitle("Quiz Portal - Gradebook & Anti-Cheat Audit")
         apply_icon(self)
-        self.resize(860, 480)
+        self.resize(920, 520)
         self.student_id = student_id
         self.build_ui()
 
@@ -581,8 +634,9 @@ class GradebookDialog(QDialog):
 
         layout.addWidget(top_panel)
 
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["ID", "Student Name", "Quiz Title", "Score", "Tab Switches", "Proctor Status"])
+        self.table = QTableWidget(0, 7)
+        self.table.verticalHeader().hide()
+        self.table.setHorizontalHeaderLabels(["ID", "Student Name", "Quiz Title", "Score", "Remarks", "Tab Switches", "Proctor Status"])
         header = self.table.horizontalHeader()
         if header is not None:
             header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -592,6 +646,7 @@ class GradebookDialog(QDialog):
 
         btn_close = QPushButton("Close Gradebook")
         btn_close.setObjectName("BtnSecondary")
+        btn_close.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_close.clicked.connect(self.accept)
         layout.addWidget(btn_close)
 
@@ -633,9 +688,11 @@ class GradebookDialog(QDialog):
             st_name = f"{st.get('first_name', '')} {st_ln}".strip() or "Unknown"
             qz = quizzes.get(qid, {})
             title = qz.get("title", qid)
-            total = qz.get("total_questions", "?")
-            score_str = f"{sess.get('score', '0')} / {total}"
-            
+            total = int(qz.get("total_questions", "0") or 0)
+            score_num = int(sess.get("score", "0") or 0)
+            score_str = f"{score_num} / {total}"
+
+            remarks = sess.get("remarks") or calculate_remarks(score_num, total)
             switches = int(sess.get("tab_switches", "0") or 0)
 
             if switches > 2:
@@ -654,11 +711,21 @@ class GradebookDialog(QDialog):
             self.table.setItem(row, 1, table_cell(st_name))
             self.table.setItem(row, 2, table_cell(title))
             self.table.setItem(row, 3, table_cell(score_str))
-            self.table.setItem(row, 4, table_cell(str(switches)))
+            
+            rem_item = table_cell(remarks)
+            if remarks in ["Excellent", "Good"]:
+                rem_item.setForeground(QColor("#10b981"))
+            elif remarks == "Fair":
+                rem_item.setForeground(QColor("#f59e0b"))
+            else:
+                rem_item.setForeground(QColor("#ef4444"))
+            self.table.setItem(row, 4, rem_item)
+
+            self.table.setItem(row, 5, table_cell(str(switches)))
             
             item_flag = table_cell(flag_text)
             item_flag.setForeground(QColor(color))
-            self.table.setItem(row, 5, item_flag)
+            self.table.setItem(row, 6, item_flag)
 
 
 # ==========================================
@@ -714,9 +781,12 @@ class QuestionEditorDialog(QDialog):
 
         btns = QHBoxLayout()
         btn_save = QPushButton("Save Question")
+        btn_save.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_save.clicked.connect(self.save)
+
         btn_cancel = QPushButton("Cancel")
         btn_cancel.setObjectName("BtnSecondary")
+        btn_cancel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_cancel.clicked.connect(self.reject)
 
         btns.addWidget(btn_cancel)
@@ -795,21 +865,28 @@ class QuestionEditorDialog(QDialog):
 # QUIZ QUESTIONS MANAGER
 # ==========================================
 class QuizQuestionsManager(QDialog):
-    def __init__(self, quiz_id, quiz_title, parent=None):
+    def __init__(self, quiz_id, quiz_title, questions=None, is_publish_mode=False, parent=None):
         super().__init__(parent)
         self.setStyleSheet(APP_STYLE)
         self.quiz_id = quiz_id
         self.quiz_title = quiz_title
-        self.setWindowTitle(f"Quiz Portal - {quiz_title}")
+        self.is_publish_mode = is_publish_mode
+        self.setWindowTitle(f"Publish Preview - Edit Questions for '{quiz_title}'" if is_publish_mode else f"Quiz Portal - {quiz_title}")
         apply_icon(self)
-        self.resize(720, 500)
-        self.questions = load_quiz_questions(self.quiz_id)
+        self.resize(780, 520)
+        self.questions = questions if questions is not None else load_quiz_questions(self.quiz_id)
         self.build_ui()
 
     def build_ui(self):
         layout = QVBoxLayout(self)
 
+        if self.is_publish_mode:
+            info = QLabel("<b>Editable Question Set Before Publishing:</b> Review or edit generated questions below before committing.")
+            info.setStyleSheet("color: #818cf8; margin-bottom: 6px;")
+            layout.addWidget(info)
+
         self.table = QTableWidget(0, 3)
+        self.table.verticalHeader().hide()
         self.table.setHorizontalHeaderLabels(["#", "Question Prompt", "Correct Answer"])
         header = self.table.horizontalHeader()
         if header is not None:
@@ -818,20 +895,30 @@ class QuizQuestionsManager(QDialog):
 
         btns = QHBoxLayout()
         btn_add = QPushButton("+ Add Question")
+        btn_add.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_add.clicked.connect(self.add_q)
 
         btn_edit = QPushButton("Edit")
         btn_edit.setObjectName("BtnSecondary")
+        btn_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_edit.clicked.connect(self.edit_q)
 
         btn_del = QPushButton("Delete")
         btn_del.setObjectName("BtnDanger")
+        btn_del.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_del.clicked.connect(self.del_q)
 
         btns.addWidget(btn_add)
         btns.addWidget(btn_edit)
         btns.addWidget(btn_del)
         layout.addLayout(btns)
+
+        if self.is_publish_mode:
+            btn_confirm_pub = QPushButton("✅ Publish Quiz to Database")
+            btn_confirm_pub.setStyleSheet("background-color: #10b981; font-size: 14px; padding: 12px;")
+            btn_confirm_pub.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            btn_confirm_pub.clicked.connect(self.accept)
+            layout.addWidget(btn_confirm_pub)
 
         self.refresh()
 
@@ -852,8 +939,9 @@ class QuizQuestionsManager(QDialog):
         dlg = QuestionEditorDialog(parent=self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self.questions.append(dlg.question_data)
-            save_quiz_questions(self.quiz_id, self.questions)
-            self.sync_count()
+            if not self.is_publish_mode:
+                save_quiz_questions(self.quiz_id, self.questions)
+                self.sync_count()
             self.refresh()
 
     def edit_q(self):
@@ -863,7 +951,8 @@ class QuizQuestionsManager(QDialog):
         dlg = QuestionEditorDialog(question_data=self.questions[row], parent=self)
         if dlg.exec() == QDialog.DialogCode.Accepted:
             self.questions[row] = dlg.question_data
-            save_quiz_questions(self.quiz_id, self.questions)
+            if not self.is_publish_mode:
+                save_quiz_questions(self.quiz_id, self.questions)
             self.refresh()
 
     def del_q(self):
@@ -871,8 +960,9 @@ class QuizQuestionsManager(QDialog):
         if row < 0:
             return
         self.questions.pop(row)
-        save_quiz_questions(self.quiz_id, self.questions)
-        self.sync_count()
+        if not self.is_publish_mode:
+            save_quiz_questions(self.quiz_id, self.questions)
+            self.sync_count()
         self.refresh()
 
     def sync_count(self):
@@ -885,7 +975,7 @@ class QuizQuestionsManager(QDialog):
 
 
 # ==========================================
-# PROFESSOR DASHBOARD (WITH AUTO 30-ITEM GENERATOR)
+# PROFESSOR DASHBOARD
 # ==========================================
 class ProfessorDashboard(QWidget):
     def __init__(self, on_logout=None, parent=None):
@@ -893,7 +983,7 @@ class ProfessorDashboard(QWidget):
         self.setStyleSheet(APP_STYLE)
         self.setWindowTitle("Quiz Portal - Instructor Console")
         apply_icon(self)
-        self.resize(920, 600)
+        self.resize(1060, 640)
         self.on_logout = on_logout
         self.build_ui()
         self.load_all()
@@ -916,37 +1006,52 @@ class ProfessorDashboard(QWidget):
 
         self.txt_title = QLineEdit()
         self.txt_title.setPlaceholderText("New Quiz Title")
+
         self.txt_dur = QLineEdit()
         self.txt_dur.setPlaceholderText("Duration (Mins)")
-        self.txt_dur.setFixedWidth(130)
+        self.txt_dur.setFixedWidth(120)
+        self.txt_dur.setValidator(QRegularExpressionValidator(QRegularExpression("^[1-9][0-9]*$")))
 
-        btn_create = QPushButton("⚡ Create Auto-Generated 30-Item Quiz")
+        self.cmb_item_count = QComboBox()
+        self.cmb_item_count.addItems(["10 Items", "20 Items", "30 Items"])
+        self.cmb_item_count.setCurrentIndex(2)
+        self.cmb_item_count.setFixedWidth(110)
+
+        btn_create = QPushButton("⚡ Create & Preview Quiz")
+        btn_create.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_create.clicked.connect(self.create_quiz)
 
         c_layout.addWidget(self.txt_title)
         c_layout.addWidget(self.txt_dur)
+        c_layout.addWidget(self.cmb_item_count)
         c_layout.addWidget(btn_create)
         layout.addWidget(card)
 
-        self.table_quizzes = QTableWidget(0, 4)
-        self.table_quizzes.setHorizontalHeaderLabels(["ID", "Title", "Duration", "Questions"])
+        self.table_quizzes = QTableWidget(0, 5)
+        self.table_quizzes.verticalHeader().hide()
+        self.table_quizzes.setHorizontalHeaderLabels(["ID", "Title", "Duration", "Questions", "Date Published"])
         header = self.table_quizzes.horizontalHeader()
         if header is not None:
             header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table_quizzes)
 
         q_btns = QHBoxLayout()
-        btn_edit = QPushButton("Manage Questions")
+        btn_edit = QPushButton("Manage / Edit Questions")
+        btn_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_edit.clicked.connect(self.manage_q)
-        btn_del = QPushButton("Delete Quiz")
+
+        btn_del = QPushButton("Delete Selected Quiz")
         btn_del.setObjectName("BtnDanger")
+        btn_del.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_del.clicked.connect(self.delete_quiz)
+
         q_btns.addWidget(btn_edit)
-        q_btns.addStretch()
         q_btns.addWidget(btn_del)
         layout.addLayout(q_btns)
 
         self.table_students = QTableWidget(0, 5)
+        self.table_students.verticalHeader().hide()
         self.table_students.setHorizontalHeaderLabels(["Student ID", "First Name", "Last Name", "Email", "Completed Quizzes"])
         s_header = self.table_students.horizontalHeader()
         if s_header is not None:
@@ -955,6 +1060,7 @@ class ProfessorDashboard(QWidget):
         layout.addWidget(self.table_students)
 
         btn_gb = QPushButton("View Gradebook & Anti-Cheat Audit Logs")
+        btn_gb.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         btn_gb.clicked.connect(self.open_gradebook)
         layout.addWidget(btn_gb)
 
@@ -972,6 +1078,7 @@ class ProfessorDashboard(QWidget):
             self.table_quizzes.setItem(r, 1, table_cell(q.get("title", "")))
             self.table_quizzes.setItem(r, 2, table_cell(f"{q.get('duration_minutes', '10')} Mins"))
             self.table_quizzes.setItem(r, 3, table_cell(f"{q.get('total_questions', '0')} Qs"))
+            self.table_quizzes.setItem(r, 4, table_cell(q.get("date_published", "N/A")))
 
         self.table_students.setRowCount(0)
         sessions = read_data(SESSIONS_CSV)
@@ -994,52 +1101,74 @@ class ProfessorDashboard(QWidget):
     def create_quiz(self):
         t = self.txt_title.text().strip()
         d = self.txt_dur.text().strip()
-        if not t or not d or not d.isdigit():
-            QMessageBox.warning(self, "Validation Error", "Please enter a valid quiz title and numeric duration in minutes.")
+        
+        if not t:
+            QMessageBox.warning(self, "Validation Error", "Please enter a quiz title.")
             return
+
+        if not d or not d.isdigit() or int(d) <= 0:
+            QMessageBox.warning(self, "Validation Error", "Duration must be a positive whole number.")
+            return
+
+        selected_text = self.cmb_item_count.currentText()
+        item_count = int(selected_text.split()[0])
 
         quizzes = read_data(QUIZZES_CSV)
         qid = f"QUIZ_{len(quizzes) + 1:03d}"
+        now_str = get_spaced_now()
 
-        # Generate 30 Randomized Multiple Choice / True-False Questions
-        auto_questions = generate_auto_questions(30)
-        save_quiz_questions(qid, auto_questions)
+        auto_questions = generate_auto_questions(item_count)
 
-        quizzes.append({
-            "quiz_id": qid,
-            "title": t,
-            "subject": "General",
-            "total_questions": "30",
-            "duration_minutes": d
-        })
-        write_data(QUIZZES_CSV, quizzes, QUIZ_FIELDS)
+        dlg = QuizQuestionsManager(qid, t, questions=auto_questions, is_publish_mode=True, parent=self)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            final_qs = dlg.questions
+            save_quiz_questions(qid, final_qs)
 
-        QMessageBox.information(
-            self, "Quiz Created", 
-            f"Quiz '{t}' created successfully!\n\nAuto-generated 30 questions (Multiple Choice & True/False)."
-        )
+            quizzes.append({
+                "quiz_id": qid,
+                "title": t,
+                "subject": "General",
+                "total_questions": str(len(final_qs)),
+                "duration_minutes": d,
+                "date_published": now_str
+            })
+            write_data(QUIZZES_CSV, quizzes, QUIZ_FIELDS)
 
-        self.txt_title.clear()
-        self.txt_dur.clear()
-        self.load_all()
+            QMessageBox.information(
+                self, "Quiz Published", 
+                f"Quiz '{t}' published successfully!\n\nID: {qid}\nPublished On: {now_str}\nTotal Questions: {len(final_qs)}"
+            )
+
+            self.txt_title.clear()
+            self.txt_dur.clear()
+            self.load_all()
 
     def manage_q(self):
         r = self.table_quizzes.currentRow()
         if r < 0:
+            QMessageBox.information(self, "Select Quiz", "Please select a quiz row from the table first.")
             return
-        qid = self.table_quizzes.item(r, 0).text()
-        title = self.table_quizzes.item(r, 1).text()
-        QuizQuestionsManager(qid, title, parent=self).exec()
-        self.load_all()
+        item_id = self.table_quizzes.item(r, 0)
+        item_title = self.table_quizzes.item(r, 1)
+
+        if item_id is not None and item_title is not None:
+            qid = item_id.text()
+            title = item_title.text()
+            QuizQuestionsManager(qid, title, is_publish_mode=False, parent=self).exec()
+            self.load_all()
 
     def delete_quiz(self):
         r = self.table_quizzes.currentRow()
         if r < 0:
+            QMessageBox.information(self, "Select Quiz", "Please select a quiz row from the table first.")
             return
-        qid = self.table_quizzes.item(r, 0).text()
-        quizzes = [q for q in read_data(QUIZZES_CSV) if q.get("quiz_id") != qid]
-        write_data(QUIZZES_CSV, quizzes, QUIZ_FIELDS)
-        self.load_all()
+        item_id = self.table_quizzes.item(r, 0)
+
+        if item_id is not None:
+            qid = item_id.text()
+            quizzes = [q for q in read_data(QUIZZES_CSV) if q.get("quiz_id") != qid]
+            write_data(QUIZZES_CSV, quizzes, QUIZ_FIELDS)
+            self.load_all()
 
     def open_gradebook(self):
         r = self.table_students.currentRow()
@@ -1062,7 +1191,7 @@ class StudentDashboard(QWidget):
         self.setStyleSheet(APP_STYLE)
         self.setWindowTitle("Quiz Portal")
         apply_icon(self)
-        self.resize(900, 560)
+        self.resize(1000, 600)
         self.student_data = student_data
         self.on_logout = on_logout
         self.current_mode = ""
@@ -1074,7 +1203,6 @@ class StudentDashboard(QWidget):
         self.main_layout.setContentsMargins(20, 20, 20, 20)
         self.main_layout.setSpacing(14)
 
-        # Header Navigation
         top = QHBoxLayout()
         fn = f"{self.student_data.get('first_name', '')} {self.student_data.get('last_name', '')}".strip()
         top.addWidget(QLabel(f"<h2 style='color:#818cf8; margin:0;'>Quiz Portal — Welcome, {fn} 👋</h2>"))
@@ -1085,7 +1213,6 @@ class StudentDashboard(QWidget):
         top.addWidget(btn_out)
         self.main_layout.addLayout(top)
 
-        # Dynamic Responsive Screen Prompt Card
         self.prompt_card = QFrame()
         self.prompt_card.setObjectName("HeaderCard")
         p_card_layout = QVBoxLayout(self.prompt_card)
@@ -1102,30 +1229,34 @@ class StudentDashboard(QWidget):
         p_card_layout.addWidget(self.lbl_responsive_prompt)
         self.main_layout.addWidget(self.prompt_card)
 
-        # Exam Table
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["Quiz Title", "Questions", "Duration", "Status"])
+        self.table = QTableWidget(0, 6)
+        self.table.verticalHeader().hide()
+        self.table.setHorizontalHeaderLabels(["Quiz Title", "Questions", "Duration", "Date Published", "Score", "Remarks & Status"])
         header = self.table.horizontalHeader()
         if header is not None:
             header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
+            header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
         self.main_layout.addWidget(self.table)
 
         self.btn_start = QPushButton("▶ Launch Selected Quiz")
+        self.btn_start.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.btn_start.setStyleSheet("font-size: 14px; padding: 14px;")
         self.btn_start.clicked.connect(self.start_quiz)
         self.main_layout.addWidget(self.btn_start)
 
         self.load_quizzes()
 
-    def resizeEvent(self, event):
-        w = event.size().width()
-        if w < 580:
-            self.apply_phone_mode()
-        elif 580 <= w < 880:
-            self.apply_tablet_mode()
-        else:
-            self.apply_pc_mode()
-        super().resizeEvent(event)
+    def resizeEvent(self, a0: QResizeEvent | None) -> None:
+        if a0 is not None:
+            w = a0.size().width()
+            if w < 580:
+                self.apply_phone_mode()
+            elif 580 <= w < 880:
+                self.apply_tablet_mode()
+            else:
+                self.apply_pc_mode()
+        super().resizeEvent(a0)
 
     def apply_phone_mode(self):
         if self.current_mode == "phone":
@@ -1136,7 +1267,6 @@ class StudentDashboard(QWidget):
             "<b>Mobile Prompt:</b> Tap a quiz row in the list below to select it. "
             "Scroll down to view completion statuses before launching your proctored assessment."
         )
-        self.btn_start.setStyleSheet("font-size: 15px; padding: 16px; font-weight: bold;")
 
     def apply_tablet_mode(self):
         if self.current_mode == "tablet":
@@ -1147,7 +1277,6 @@ class StudentDashboard(QWidget):
             "<b>Tablet Prompt:</b> Tap to select a quiz from the table. "
             "Ensure device orientation remains locked before entering fullscreen mode."
         )
-        self.btn_start.setStyleSheet("font-size: 14px; padding: 14px;")
 
     def apply_pc_mode(self):
         if self.current_mode == "pc":
@@ -1158,7 +1287,6 @@ class StudentDashboard(QWidget):
             "<b>Desktop Prompt:</b> Select a quiz using your mouse pointer. "
             "Click <b>Launch Selected Quiz</b> to proceed to the fullscreen confirmation screen."
         )
-        self.btn_start.setStyleSheet("font-size: 14px; padding: 12px;")
 
     def logout(self):
         self.close()
@@ -1172,23 +1300,34 @@ class StudentDashboard(QWidget):
 
         for q in read_data(QUIZZES_CSV):
             qid = q.get("quiz_id")
+            total_q = int(q.get("total_questions", "0") or 0)
             att = [s for s in sessions if s.get("student_id") == sid and s.get("quiz_id") == qid]
-            st = f"Completed ({att[-1].get('score', '0')}/{q.get('total_questions', '0')})" if att else "Available"
+
+            if att:
+                sc = int(att[-1].get("score", "0") or 0)
+                score_str = f"{sc} / {total_q}"
+                rem = att[-1].get("remarks") or calculate_remarks(sc, total_q)
+                status_str = f"Completed ({rem})"
+            else:
+                score_str = "- / -"
+                status_str = "Available"
 
             r = self.table.rowCount()
             self.table.insertRow(r)
             item = table_cell(q.get("title", ""))
             item.setData(Qt.ItemDataRole.UserRole, qid)
             self.table.setItem(r, 0, item)
-            self.table.setItem(r, 1, table_cell(f"{q.get('total_questions', '0')} Questions"))
+            self.table.setItem(r, 1, table_cell(f"{total_q} Questions"))
             self.table.setItem(r, 2, table_cell(f"{q.get('duration_minutes', '10')} Mins"))
+            self.table.setItem(r, 3, table_cell(q.get("date_published", "N/A")))
+            self.table.setItem(r, 4, table_cell(score_str))
             
-            st_item = table_cell(st)
-            if "Completed" in st:
+            st_item = table_cell(status_str)
+            if "Completed" in status_str:
                 st_item.setForeground(QColor("#10b981"))
             else:
                 st_item.setForeground(QColor("#818cf8"))
-            self.table.setItem(r, 3, st_item)
+            self.table.setItem(r, 5, st_item)
 
     def start_quiz(self):
         r = self.table.currentRow()
@@ -1196,21 +1335,23 @@ class StudentDashboard(QWidget):
             QMessageBox.information(self, "Selection Required", "Please select a quiz from the table first.")
             return
 
-        qid = self.table.item(r, 0).data(Qt.ItemDataRole.UserRole)
-        qs = load_quiz_questions(qid)
-        if not qs:
-            QMessageBox.warning(self, "Empty Quiz", "This quiz does not contain any questions yet.")
-            return
+        item = self.table.item(r, 0)
+        if item is not None:
+            qid = item.data(Qt.ItemDataRole.UserRole)
+            qs = load_quiz_questions(qid)
+            if not qs:
+                QMessageBox.warning(self, "Empty Quiz", "This quiz does not contain any questions yet.")
+                return
 
-        q_list = read_data(QUIZZES_CSV)
-        qz = next((q for q in q_list if q.get("quiz_id") == qid), {})
-        title = qz.get("title", "Quiz")
-        dur = qz.get("duration_minutes", "10")
+            q_list = read_data(QUIZZES_CSV)
+            qz = next((q for q in q_list if q.get("quiz_id") == qid), {})
+            title = qz.get("title", "Quiz")
+            dur = qz.get("duration_minutes", "10")
 
-        prompt = FullscreenPromptDialog(quiz_title=title, duration=dur, total_q=str(len(qs)), parent=self)
-        if prompt.exec() == QDialog.DialogCode.Accepted:
-            self.runner = QuizRunner(self.student_data, qid, on_finish=self.load_quizzes)
-            self.runner.showFullScreen()
+            prompt = FullscreenPromptDialog(quiz_title=title, duration=dur, total_q=str(len(qs)), parent=self)
+            if prompt.exec() == QDialog.DialogCode.Accepted:
+                self.runner = QuizRunner(self.student_data, qid, on_finish=self.load_quizzes)
+                self.runner.showFullScreen()
 
 
 # ==========================================
@@ -1228,46 +1369,79 @@ class QuizRunner(QWidget):
         self.answers = {}
         self.tab_switches = 0
         self.is_submitted = False
+        self.is_fully_initialized = False
 
         q_list = read_data(QUIZZES_CSV)
         qz = next((q for q in q_list if q.get("quiz_id") == quiz_id), {})
         self.title = qz.get("title", "Quiz")
-        self.time_left = int(qz.get("duration_minutes", 10)) * 60
+        self.duration_mins = int(qz.get("duration_minutes", 10))
+        self.time_left = self.duration_mins * 60
+        self.end_time_str = (datetime.now() + timedelta(minutes=self.duration_mins)).strftime("%I:%M %p")
 
-        self.installEventFilter(self)
-
+        self.num_buttons = []
         self.build_ui()
         self.start_timer()
         self.render_q()
+
+        QTimer.singleShot(1500, self.mark_initialized)
+
+    def mark_initialized(self):
+        self.is_fully_initialized = True
 
     def build_ui(self):
         self.setWindowTitle(f"Quiz Portal - {self.title}")
         apply_icon(self)
 
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(40, 30, 40, 30)
-        main_layout.setSpacing(16)
+        main_layout.setContentsMargins(30, 20, 30, 20)
+        main_layout.setSpacing(12)
 
         top = QHBoxLayout()
         self.lbl_title = QLabel(f"<b style='font-size:20px; color:#818cf8;'>📝 {self.title}</b>")
+        
+        self.lbl_duration_info = QLabel(f"⏱️ {self.duration_mins} Mins Allocated (Ends at {self.end_time_str})")
+        self.lbl_duration_info.setStyleSheet("font-size: 13px; font-weight: bold; color: #a5b4fc; background: #151c2c; padding: 6px 12px; border-radius: 8px;")
+
         self.lbl_timer = QLabel("⏱️ 00:00")
-        self.lbl_timer.setStyleSheet("font-size: 20px; font-weight: bold; color: #818cf8; background: #151c2c; padding: 8px 18px; border-radius: 8px; border: 1px solid #334155;")
+        self.lbl_timer.setStyleSheet("font-size: 18px; font-weight: bold; color: #818cf8; background: #151c2c; padding: 6px 16px; border-radius: 8px; border: 1px solid #334155;")
         
         top.addWidget(self.lbl_title)
         top.addStretch()
+        top.addWidget(self.lbl_duration_info)
         top.addWidget(self.lbl_timer)
         main_layout.addLayout(top)
 
-        # Proctored Violation Bar
+        nav_scroll = QScrollArea()
+        nav_scroll.setFixedHeight(54)
+        nav_scroll.setWidgetResizable(True)
+        nav_scroll.setStyleSheet("QScrollArea { border: 1px solid #222d42; border-radius: 8px; background: #0f172a; }")
+
+        num_container = QWidget()
+        self.num_layout = QHBoxLayout(num_container)
+        self.num_layout.setContentsMargins(8, 6, 8, 6)
+        self.num_layout.setSpacing(6)
+
+        for i in range(len(self.questions)):
+            btn = QPushButton(f"{i + 1}")
+            btn.setFixedWidth(38)
+            btn.setObjectName("BtnNumUnanswered")
+            btn.clicked.connect(lambda _, idx=i: self.jump_to_q(idx))
+            self.num_buttons.append(btn)
+            self.num_layout.addWidget(btn)
+
+        self.num_layout.addStretch()
+        nav_scroll.setWidget(num_container)
+        main_layout.addWidget(nav_scroll)
+
         self.warn_card = QFrame()
         self.warn_card.setObjectName("WarningCardClean")
         wc_layout = QHBoxLayout(self.warn_card)
-        wc_layout.setContentsMargins(16, 10, 16, 10)
+        wc_layout.setContentsMargins(16, 8, 16, 8)
         
-        self.lbl_warning = QLabel("🛡️ Quiz Portal Anti-Cheat Active — Tab switching & focus shifts are logged.")
+        self.lbl_warning = QLabel("🛡️ Anti-Cheat Active — Tab switching or focus shifts are strictly recorded.")
         self.lbl_warning.setStyleSheet("color: #10b981; font-weight: bold;")
         self.lbl_switches = QLabel("Focus Loss: 0")
-        self.lbl_switches.setStyleSheet("color: #ffffff; font-weight: bold; background: #0f172a; padding: 6px 12px; border-radius: 6px;")
+        self.lbl_switches.setStyleSheet("color: #ffffff; font-weight: bold; background: #0f172a; padding: 4px 10px; border-radius: 6px;")
         
         wc_layout.addWidget(self.lbl_warning)
         wc_layout.addStretch()
@@ -1277,25 +1451,23 @@ class QuizRunner(QWidget):
         self.progress = QProgressBar()
         main_layout.addWidget(self.progress)
 
-        # Question Presentation Card
         self.card = QFrame()
         self.card.setObjectName("Panel")
         c_layout = QVBoxLayout(self.card)
-        c_layout.setContentsMargins(28, 28, 28, 28)
+        c_layout.setContentsMargins(24, 20, 24, 20)
 
         self.lbl_q_num = QLabel("Question 1")
         self.lbl_q_num.setStyleSheet("color: #6366f1; font-weight: bold; font-size: 15px;")
         
         self.lbl_q_txt = QLabel("Question text...")
         self.lbl_q_txt.setWordWrap(True)
-        self.lbl_q_txt.setStyleSheet("font-size: 18px; font-weight: 600; margin-top: 10px; margin-bottom: 16px;")
+        self.lbl_q_txt.setStyleSheet("font-size: 17px; font-weight: 600; margin-top: 8px; margin-bottom: 12px;")
 
         c_layout.addWidget(self.lbl_q_num)
         c_layout.addWidget(self.lbl_q_txt)
 
         self.options_stack = QStackedWidget()
 
-        # Page 0: Multiple Choice / True-False Radios
         self.radio_widget = QWidget()
         rw_layout = QVBoxLayout(self.radio_widget)
         rw_layout.setContentsMargins(0, 0, 0, 0)
@@ -1316,37 +1488,37 @@ class QuizRunner(QWidget):
         c_layout.addWidget(self.options_stack)
         main_layout.addWidget(self.card)
 
-        # Navigation Bar
         nav = QHBoxLayout()
         self.btn_prev = QPushButton("◄ Previous")
         self.btn_prev.setObjectName("BtnSecondary")
+        self.btn_prev.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.btn_prev.clicked.connect(self.prev_q)
 
         self.btn_next = QPushButton("Next ►")
+        self.btn_next.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.btn_next.clicked.connect(self.next_q)
 
         self.btn_submit = QPushButton("Submit Final Answers")
         self.btn_submit.setObjectName("BtnDanger")
+        self.btn_submit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.btn_submit.clicked.connect(self.confirm_submit)
 
         nav.addWidget(self.btn_prev)
         nav.addWidget(self.btn_next)
-        nav.addStretch()
         nav.addWidget(self.btn_submit)
         main_layout.addLayout(nav)
 
-    def eventFilter(self, obj, event):
-        if obj == self and not self.is_submitted and self.isVisible():
-            if event.type() in [QEvent.Type.WindowDeactivate, QEvent.Type.Hide]:
+    def changeEvent(self, a0: QEvent | None) -> None:
+        if a0 is not None and a0.type() == QEvent.Type.ActivationChange:
+            if self.is_fully_initialized and not self.isActiveWindow() and not self.is_submitted and self.isVisible():
                 self.tab_switches += 1
                 self.lbl_switches.setText(f"Focus Loss: {self.tab_switches}")
-                self.lbl_warning.setText("⚠️ ALERT: Tab switch or focus loss incident recorded!")
+                self.lbl_warning.setText("⚠️ ALERT: Tab switch or window focus loss incident recorded!")
                 self.lbl_warning.setStyleSheet("color: #ef4444; font-weight: bold;")
                 self.warn_card.setObjectName("WarningCardWarn")
                 self.warn_card.setStyle(self.warn_card.style())
-                
                 self.log_anti_cheat_incident()
-        return super().eventFilter(obj, event)
+        super().changeEvent(a0)
 
     def log_anti_cheat_incident(self):
         conflicts = read_data(CONFLICTS_CSV)
@@ -1376,14 +1548,21 @@ class QuizRunner(QWidget):
             self.update_timer_display()
         else:
             self.timer.stop()
-            QMessageBox.warning(self, "Time Limit Reached", "Quiz time expired! Submitting answers automatically.")
-            self.submit_quiz()
+            unanswered = [i + 1 for i in range(len(self.questions)) if i not in self.answers]
+            if unanswered:
+                QMessageBox.warning(
+                    self, "Time Limit Reached", 
+                    f"Time limit expired! However, you still have unanswered questions: {unanswered[:5]}...\n\n"
+                    "Please quickly pick answers or complete unanswered items to submit!"
+                )
+            else:
+                self.submit_quiz()
 
     def update_timer_display(self):
         m, s = divmod(self.time_left, 60)
         self.lbl_timer.setText(f"⏱️ {m:02d}:{s:02d}")
         if self.time_left < 60:
-            self.lbl_timer.setStyleSheet("font-size: 20px; font-weight: bold; color: #ef4444; background: #151c2c; padding: 8px 18px; border-radius: 8px; border: 1px solid #ef4444;")
+            self.lbl_timer.setStyleSheet("font-size: 18px; font-weight: bold; color: #ef4444; background: #151c2c; padding: 6px 16px; border-radius: 8px; border: 1px solid #ef4444;")
 
     def render_q(self):
         total = len(self.questions)
@@ -1415,9 +1594,26 @@ class QuizRunner(QWidget):
 
         self.btn_prev.setEnabled(self.index > 0)
         self.btn_next.setEnabled(self.index < total - 1)
+        self.update_num_buttons()
+
+    def update_num_buttons(self):
+        for i, btn in enumerate(self.num_buttons):
+            if i == self.index:
+                btn.setObjectName("BtnNumCurrent")
+            elif i in self.answers:
+                btn.setObjectName("BtnNumAnswered")
+            else:
+                btn.setObjectName("BtnNumUnanswered")
+            btn.setStyle(btn.style())
+
+    def jump_to_q(self, idx: int):
+        if 0 <= idx < len(self.questions):
+            self.index = idx
+            self.render_q()
 
     def option_selected(self, btn_id):
         self.answers[self.index] = btn_id
+        self.update_num_buttons()
 
     def prev_q(self):
         if self.index > 0:
@@ -1430,6 +1626,17 @@ class QuizRunner(QWidget):
             self.render_q()
 
     def confirm_submit(self):
+        unanswered = [i + 1 for i in range(len(self.questions)) if i not in self.answers]
+        if unanswered:
+            un_str = ", ".join(map(str, unanswered[:10]))
+            if len(unanswered) > 10:
+                un_str += f" (+{len(unanswered) - 10} more)"
+            QMessageBox.warning(
+                self, "Unanswered Questions Remaining", 
+                f"You cannot submit yet!\n\nPlease answer all items before submitting.\n\nMissing Questions: #{un_str}"
+            )
+            return
+
         res = QMessageBox.question(
             self, "Confirm Submission", 
             "Are you sure you want to finish and submit your quiz?",
@@ -1444,15 +1651,17 @@ class QuizRunner(QWidget):
             self.timer.stop()
 
         score = 0
+        total_q = len(self.questions)
         for i, q in enumerate(self.questions):
             user_ans = self.answers.get(i)
             correct_idx = q.get("correct_option_index", 0)
             if user_ans == correct_idx:
                 score += 1
 
+        remarks = calculate_remarks(score, total_q)
         sessions = read_data(SESSIONS_CSV)
         sess_id = f"SESS_{len(sessions) + 1:04d}"
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now_spaced = get_spaced_now()
         sid = self.student_data.get("student_id", "")
 
         sessions.append({
@@ -1460,14 +1669,15 @@ class QuizRunner(QWidget):
             "student_id": sid,
             "quiz_id": self.quiz_id,
             "score": str(score),
-            "date_taken": now,
-            "tab_switches": str(self.tab_switches)
+            "date_taken": now_spaced,
+            "tab_switches": str(self.tab_switches),
+            "remarks": remarks
         })
         write_data(SESSIONS_CSV, sessions, SESSION_FIELDS)
 
         QMessageBox.information(
             self, "Submission Complete", 
-            f"Quiz submitted successfully!\n\nFinal Score: {score} / {len(self.questions)}\nFocus Shifts Detected: {self.tab_switches}"
+            f"Quiz submitted successfully!\n\nFinal Score: {score} / {total_q}\nRemarks: {remarks}\nFocus Shifts Detected: {self.tab_switches}"
         )
 
         self.showNormal()
@@ -1510,3 +1720,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
