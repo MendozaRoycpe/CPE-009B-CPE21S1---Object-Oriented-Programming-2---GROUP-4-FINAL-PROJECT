@@ -1,2 +1,1 @@
-student_id,name,01,locked_01
-Roy Mendoza,007,10,yes
+student_id,first_name,last_name,email,status
