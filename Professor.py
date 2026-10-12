@@ -1,3 +1,9 @@
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# NOTE: Draft / unused by main.py.
+# This file needs config.py, utils.py, styles.py which are not in the repo.
+# Canonical professor side is teacher_system.py (and PROFESSOR_GUI.py for HD).
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
     QPushButton, QMessageBox, QTableWidget, QTableWidgetItem, 

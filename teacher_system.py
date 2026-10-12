@@ -2,6 +2,10 @@ import sys, csv, os, hashlib, json
 from datetime import datetime
 from PyQt6.QtWidgets import QWidget, QApplication, QPushButton, QLineEdit, QLabel, QMessageBox, QTableWidget, QTableWidgetItem, QFileDialog, QComboBox, QSpinBox, QDialog, QFormLayout, QDialogButtonBox, QVBoxLayout, QHBoxLayout, QHeaderView, QInputDialog, QAbstractItemView
 from PyQt6.QtCore import Qt
+from ui_theme import (
+    apply_app_theme, start_yellow_canvas, GradientButton,
+    qtype_code, qtype_label, is_mcq, tf_choices, MCQ_LABEL, TF_LABEL,
+)
 
 #xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 # FUNCTIONS / METHODS LIST:
@@ -17,17 +21,21 @@ from PyQt6.QtCore import Qt
 # - load_quizzes()
 # - save_quizzes(quizzes)
 #
+# - questions_path(quiz_id)
+# - load_questions(quiz_id)
+# - save_questions(quiz_id, questions)
+#
 # CLASSES & METHODS:
 # - AddStudentDialog: __init__(), get_data()
 # - QuizDialog: __init__(), get_data()
-# - ProfessorLogin: __init__(), initUI(), login()
+# - QuestionDialog: __init__(), toggle_choice_fields(), get_data()
+# - ProfessorLogin: __init__(), initUI(), login(), back_to_portal(), closeEvent()
 # - ProfessorDashboard: __init__(), initUI(), load_grade_table(), select_student(),
 #                       add_student(), import_students(), edit_grade(),
 #                       delete_student(), reopen_quiz(), lock_grade(),
-#                       quiz_manager(), logout()
+#                       quiz_manager(), logout(), closeEvent()
 # - QuizManagerWindow: __init__(), load_table(), create_quiz(), toggle_publish(), delete_quiz(),
 #                       manage_questions()
-# - QuestionDialog: __init__(), toggle_choice_fields(), get_data()
 # - QuestionManagerWindow: __init__(), load_list(), add_question()
 #xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
@@ -156,6 +164,7 @@ class AddStudentDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Add Student")
         self.setFixedSize(400, 180)
+        start_yellow_canvas(self)
         layout = QFormLayout(self)
         self.id_input = QLineEdit()
         self.name_input = QLineEdit()
@@ -177,6 +186,7 @@ class QuizDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Create Quiz")
         self.setFixedSize(450, 260)
+        start_yellow_canvas(self)
         layout = QFormLayout(self)
         self.quiz_id, self.title = QLineEdit(), QLineEdit()
         self.category = QComboBox()
@@ -199,32 +209,45 @@ class QuizDialog(QDialog):
     def get_data(self):
         return {"quiz_id": self.quiz_id.text().strip(), "title": self.title.text().strip(), "category": self.category.currentText(), "max_item": str(self.max_item.value()), "time_limit_minutes": str(self.time_limit.value())}
 
-# modal dialog pop-up para sa pag-add ng isang tanong (MCQ o True/False) sa isang quiz
+# modal dialog pop-up para sa pag-add ng isang tanong (Multiple Choice o True or False)
 class QuestionDialog(QDialog):
-    # setup ng input fields: tanong, type, choices, at kung alin ang tamang sagot
+    # setup ng input fields: tanong, type, Quizizz-colored choices, True/False sagot
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Add Question")
-        self.setFixedSize(450, 340)
+        self.setMinimumWidth(520)
+        start_yellow_canvas(self)
         layout = QFormLayout(self)
+        layout.setSpacing(10)
 
         self.text_input = QLineEdit()
         layout.addRow("Question Text:", self.text_input)
 
         self.type_box = QComboBox()
-        self.type_box.addItems(["MCQ", "TF"])
+        self.type_box.addItems([MCQ_LABEL, TF_LABEL])
         self.type_box.currentTextChanged.connect(self.toggle_choice_fields)
         layout.addRow("Type:", self.type_box)
 
-        self.choice_inputs = [QLineEdit() for _ in range(4)]
-        self.choice_rows = []
-        for i, box in enumerate(self.choice_inputs):
-            box.setPlaceholderText(f"Choice {i + 1}")
-            layout.addRow(f"Choice {i + 1}:", box)
+        self.tf_hint = QLabel("Answers are locked to True or False — pick the correct one below.")
+        self.tf_hint.setWordWrap(True)
+        layout.addRow(self.tf_hint)
 
-        self.correct_box = QSpinBox() # <-- NOTE: 1-based sa UI para madali intindihin, ico-convert na lang sa 0-based index pag sine-save
-        self.correct_box.setRange(1, 4)
-        layout.addRow("Correct Choice # (1=True for TF):", self.correct_box)
+        # Quizizz colors: red / blue / yellow / green
+        option_colors = ["#E21B3C", "#1368CE", "#D89E00", "#26890C"]
+        option_shapes = ["▲  Option 1", "◆  Option 2", "●  Option 3", "■  Option 4"]
+        self.choice_inputs = []
+        for i in range(4):
+            box = QLineEdit()
+            box.setPlaceholderText(option_shapes[i])
+            box.setStyleSheet(
+                f"QLineEdit {{ border: 3px solid {option_colors[i]}; background: #FFFDE7; "
+                f"border-radius: 12px; padding: 8px; font-weight: bold; }}"
+            )
+            layout.addRow(option_shapes[i] + ":", box)
+            self.choice_inputs.append(box)
+
+        self.correct_combo = QComboBox()
+        layout.addRow("Correct Answer:", self.correct_combo)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
@@ -233,45 +256,72 @@ class QuestionDialog(QDialog):
 
         self.toggle_choice_fields(self.type_box.currentText())
 
-    # itinatago yung mga extra choice text boxes kapag True/False lang ang tanong
+    # MCQ = apat na colored choices; True or False = True/False lang talaga
     def toggle_choice_fields(self, qtype):
-        is_mcq = qtype == "MCQ"
+        mcq = qtype == MCQ_LABEL
+        self.tf_hint.setVisible(not mcq)
         for box in self.choice_inputs:
-            box.setVisible(is_mcq)
-        self.correct_box.setRange(1, 4 if is_mcq else 2)
+            box.setVisible(mcq)
+        self.correct_combo.clear()
+        if mcq:
+            self.correct_combo.addItems(["Option 1", "Option 2", "Option 3", "Option 4"])
+        else:
+            self.correct_combo.addItems(tf_choices())
 
-    # ibabalik yung dictionary representation ng tanong, depende sa type
+    # ibabalik yung dictionary representation ng tanong (MCQ/TF sa file, full names sa UI)
     def get_data(self):
-        qtype = self.type_box.currentText()
+        qtype = qtype_code(self.type_box.currentText())
         text = self.text_input.text().strip()
         if qtype == "MCQ":
-            choices = [box.text().strip() for box in self.choice_inputs if box.text().strip()]
+            choices = [box.text().strip() for box in self.choice_inputs]
         else:
-            choices = ["True", "False"]
-        correct_index = self.correct_box.value() - 1
+            choices = tf_choices()
+        if qtype == "TF":
+            correct_index = 0 if self.correct_combo.currentText() == "True" else 1
+        else:
+            correct_index = self.correct_combo.currentIndex()
         return {"qtype": qtype, "text": text, "choices": choices, "correct_index": correct_index}
 
 # login window para sa prof authentication
 class ProfessorLogin(QWidget):
     # setup ng window size at title para sa login page
-    def __init__(self):
+    # portal_window = RoleSelect mula sa main.py; None kung standalone run
+    def __init__(self, portal_window=None):
         super().__init__()
+        self.portal_window = portal_window
         self.setWindowTitle("Professor Login")
-        self.setGeometry(400, 200, 450, 300)
+        self.setGeometry(400, 200, 480, 340)
+        start_yellow_canvas(self)
         self.initUI()
 
     # gawa ng labels, text box password, at login button sa window
     def initUI(self):
-        QLabel("QUIZ SYSTEM - PROFESSOR", self).move(100, 35)
+        QLabel("QUIZ SYSTEM - PROFESSOR", self).move(95, 35)
         QLabel("Password:", self).move(70, 100)
         self.password_input = QLineEdit(self)
-        self.password_input.setGeometry(150, 95, 220, 30)
+        self.password_input.setGeometry(150, 95, 240, 32)
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        login_button = QPushButton("Login", self)
-        login_button.setGeometry(150, 150, 220, 35)
-        login_button.clicked.connect(self.login)
-        QLabel("Demo password: jabaiskript", self).move(115, 215) # <-- NOTE: Kapag pinalitan niyo ang password sa top, palitan niyo rin itong text display para hindi nakakalito
+        login_button = GradientButton("Login", self, clicked=self.login)
+        login_button.setGeometry(150, 150, 240, 42)
+        back_button = GradientButton("Back to Portal", self, clicked=self.back_to_portal)
+        back_button.setGeometry(150, 200, 240, 42)
+        QLabel("Demo password: jabaiskript", self).move(130, 260) # <-- NOTE: Kapag pinalitan niyo ang password sa top, palitan niyo rin itong text display para hindi nakakalito
         self.show()
+
+    # ibabalik sa Teacher/Student picker kung galing sa main.py
+    def back_to_portal(self):
+        self.password_input.clear()
+        if self.portal_window is not None:
+            self.hide()
+            self.portal_window.show()
+        else:
+            self.close()
+
+    # X button ng login window — same destination as Back to Portal
+    def closeEvent(self, event):
+        if self.portal_window is not None and not getattr(self.portal_window, "_closing", False):
+            self.portal_window.show()
+        event.accept()
 
     # checking if the password is correct, if yes, open the dashboard window#comapring to dun sa naka hash kaya if mag papalit password sundan yung note sa taas
     def login(self):
@@ -296,9 +346,11 @@ class ProfessorDashboard(QWidget):
     def __init__(self, login_window):
         super().__init__()
         self.login_window = login_window
+        self.portal_window = getattr(login_window, "portal_window", None)
         self.setWindowTitle("Professor Dashboard")
         self.setGeometry(150, 100, 1100, 700)
         self.selected_student_id = None
+        start_yellow_canvas(self)
         self.initUI()
         self.load_grade_table()
 
@@ -311,16 +363,16 @@ class ProfessorDashboard(QWidget):
         self.student_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.student_table.cellClicked.connect(self.select_student)
 
-        # Dashboard Action Buttons
-        QPushButton("Add Student", self, clicked=self.add_student).move(25, 400)
-        QPushButton("Import CSV", self, clicked=self.import_students).move(145, 400)
-        QPushButton("Edit Grade", self, clicked=self.edit_grade).move(265, 400)
-        QPushButton("Delete Student", self, clicked=self.delete_student).move(385, 400)
-        QPushButton("Reopen Quiz", self, clicked=self.reopen_quiz).move(525, 400)
-        QPushButton("Lock Grade", self, clicked=self.lock_grade).move(645, 400)
-        QPushButton("Refresh", self, clicked=self.load_grade_table).move(765, 400)
-        QPushButton("Quiz Manager", self, clicked=self.quiz_manager).move(885, 400)
-        QPushButton("Logout", self, clicked=self.logout).move(25, 470)
+        # Dashboard Action Buttons — yellow animated pills
+        GradientButton("Add Student", self, clicked=self.add_student).setGeometry(25, 400, 125, 42)
+        GradientButton("Import CSV", self, clicked=self.import_students).setGeometry(160, 400, 125, 42)
+        GradientButton("Edit Grade", self, clicked=self.edit_grade).setGeometry(295, 400, 125, 42)
+        GradientButton("Delete Student", self, clicked=self.delete_student).setGeometry(430, 400, 140, 42)
+        GradientButton("Reopen Quiz", self, clicked=self.reopen_quiz).setGeometry(580, 400, 125, 42)
+        GradientButton("Lock Grade", self, clicked=self.lock_grade).setGeometry(715, 400, 125, 42)
+        GradientButton("Refresh", self, clicked=self.load_grade_table).setGeometry(850, 400, 110, 42)
+        GradientButton("Quiz Manager", self, clicked=self.quiz_manager).setGeometry(970, 400, 130, 42)
+        GradientButton("Logout", self, clicked=self.logout).setGeometry(25, 455, 140, 42)
 
         self.status_label = QLabel("Select a student row to perform student-specific actions.", self)
         self.status_label.move(25, 520)
@@ -580,13 +632,26 @@ class ProfessorDashboard(QWidget):
         QuizManagerWindow(self).exec()
         self.load_grade_table()
 
-    # ie-exit yung dashboard at ibabalik uli sa login screen interface
+    # ie-exit yung dashboard at ibabalik sa role-selection portal (o login kung standalone)
     def logout(self):
-        reply = QMessageBox.question(self, "Logout", "Return to the professor login screen?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(
+            self,
+            "Logout",
+            "Return to the role selection portal?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
         if reply == QMessageBox.StandardButton.Yes:
-            self.close()
-            self.login_window.password_input.clear() # <-- Clears password field on logout
+            self.close()  # closeEvent() ang magbabalik sa portal/login
+
+    # X button o Logout — huwag iwanang hidden ang login (magiging zombie app)
+    def closeEvent(self, event):
+        self.login_window.password_input.clear()
+        if self.portal_window is not None:
+            self.login_window.hide()
+            self.portal_window.show()
+        else:
             self.login_window.show()
+        event.accept()
 
 # dialog window para sa pag create, publish, tsaka delete ng mga quiz
 class QuizManagerWindow(QDialog):
@@ -595,6 +660,7 @@ class QuizManagerWindow(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Professor - Quiz Manager")
         self.setMinimumSize(850, 500)
+        start_yellow_canvas(self)
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("QUIZ MANAGER"))
 
@@ -604,9 +670,9 @@ class QuizManagerWindow(QDialog):
         layout.addWidget(self.table)
 
         button_layout = QHBoxLayout()
-        create_button, publish_button = QPushButton("Create Quiz"), QPushButton("Publish / Unpublish")
-        delete_button, refresh_button = QPushButton("Delete Quiz"), QPushButton("Refresh")
-        questions_button = QPushButton("Manage Questions")
+        create_button, publish_button = GradientButton("Create Quiz"), GradientButton("Publish / Unpublish")
+        delete_button, refresh_button = GradientButton("Delete Quiz"), GradientButton("Refresh")
+        questions_button = GradientButton("Manage Questions")
 
         create_button.clicked.connect(self.create_quiz)
         publish_button.clicked.connect(self.toggle_publish)
@@ -729,7 +795,8 @@ class QuestionManagerWindow(QDialog):
         super().__init__(parent)
         self.quiz_id = quiz_id
         self.setWindowTitle(f"Questions — {quiz_title}")
-        self.setMinimumSize(500, 450)
+        self.setMinimumSize(520, 480)
+        start_yellow_canvas(self)
         layout = QVBoxLayout(self)
 
         self.count_label = QLabel()
@@ -741,8 +808,8 @@ class QuestionManagerWindow(QDialog):
         layout.addWidget(self.table)
 
         button_layout = QHBoxLayout()
-        add_button = QPushButton("Add Question", clicked=self.add_question)
-        close_button = QPushButton("Close", clicked=self.accept)
+        add_button = GradientButton("Add Question", clicked=self.add_question)
+        close_button = GradientButton("Close", clicked=self.accept)
         button_layout.addWidget(add_button)
         button_layout.addWidget(close_button)
         layout.addLayout(button_layout)
@@ -755,7 +822,7 @@ class QuestionManagerWindow(QDialog):
         self.count_label.setText(f"{len(questions)} question(s) saved. (Minimum 10 required before publishing.)")
         self.table.setRowCount(len(questions))
         for row, question in enumerate(questions):
-            self.table.setItem(row, 0, QTableWidgetItem(question.get("qtype", "")))
+            self.table.setItem(row, 0, QTableWidgetItem(qtype_label(question.get("qtype", ""))))
             self.table.setItem(row, 1, QTableWidgetItem(question.get("text", "")))
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
@@ -765,8 +832,11 @@ class QuestionManagerWindow(QDialog):
         if dialog.exec() != QDialog.DialogCode.Accepted: return
         data = dialog.get_data()
 
-        if not data["text"] or len(data["choices"]) < 2:
-            QMessageBox.warning(self, "Missing Information", "Enter the question text and at least 2 choices.")
+        if not data["text"]:
+            QMessageBox.warning(self, "Missing Information", "Enter the question text.")
+            return
+        if is_mcq(data) and any(not choice for choice in data["choices"]):
+            QMessageBox.warning(self, "Missing Information", "Fill in all four Multiple Choice Question options.")
             return
 
         questions = load_questions(self.quiz_id)
@@ -780,6 +850,7 @@ ensure_files()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    apply_app_theme(app)
     login = ProfessorLogin()
     login.show()
     sys.exit(app.exec())

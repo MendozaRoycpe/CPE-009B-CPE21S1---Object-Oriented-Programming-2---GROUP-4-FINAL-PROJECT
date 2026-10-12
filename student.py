@@ -1,3 +1,9 @@
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# NOTE: Draft / unused by main.py.
+# This file needs config.py, utils.py, styles.py, quiz_window.py which are not
+# in the repo. Canonical student side is Student_system.py (and STUDENT_GUI.py).
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QListWidget, QListWidgetItem, QPushButton, QMessageBox, QFrame

@@ -1,8 +1,12 @@
 import sys, socket, json
 from datetime import datetime
 from PyQt6.QtWidgets import (QWidget, QApplication, QPushButton, QLineEdit, QLabel, QMessageBox,
-    QVBoxLayout, QHBoxLayout, QRadioButton, QButtonGroup, QListWidget, QListWidgetItem)
-from PyQt6.QtCore import QTimer
+    QVBoxLayout, QHBoxLayout, QGridLayout, QListWidget, QListWidgetItem)
+from PyQt6.QtCore import QTimer, Qt
+from ui_theme import (
+    apply_app_theme, start_yellow_canvas, GradientButton, QuizizzChoiceButton,
+    qtype_label, is_mcq, tf_choices,
+)
 
 #xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 # FUNCTIONS / METHODS LIST:
@@ -13,12 +17,12 @@ from PyQt6.QtCore import QTimer
 # - log_conflict(student_id)
 #
 # CLASSES & METHODS:
-# - StudentLogin: __init__(), initUI(), login()
+# - StudentLogin: __init__(), initUI(), login(), back_to_portal(), closeEvent()
 # - StudentDashboard: __init__(), initUI(), show_category(), load_quiz_list(),
-#                      open_selected_quiz(), logout()
+#                      open_selected_quiz(), logout(), closeEvent()
 # - TakeQuizWindow: __init__(), initUI(), render_question(), tick(), next_question(),
 #                    finish_quiz(quit_early), closeEvent()
-# - ResultWindow: __init__(), initUI()
+# - ResultWindow: __init__(), initUI(), back_to_dashboard()
 #xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Reuses every file/CSV helper and constant teacher_system.py already defines, instead of
@@ -80,21 +84,41 @@ def log_conflict(student_id):
 # login window kung saan magla-lagay lang ng Student ID ang estudyante — walang password
 class StudentLogin(QWidget):
     # setup ng window size at title para sa login page
-    def __init__(self):
+    # portal_window = RoleSelect mula sa main.py; None kung standalone run
+    def __init__(self, portal_window=None):
         super().__init__()
+        self.portal_window = portal_window
         self.setWindowTitle("Student Login")
-        self.setGeometry(400, 200, 450, 220)
+        self.setGeometry(400, 200, 480, 280)
+        start_yellow_canvas(self)
         self.initUI()
 
-    # gawa ng label, text box, at continue button
+    # gawa ng label, text box, continue button, at back-to-portal button
     def initUI(self):
-        QLabel("QUIZ SYSTEM - STUDENT", self).move(110, 30)
+        QLabel("QUIZ SYSTEM - STUDENT", self).move(120, 30)
         QLabel("Student ID:", self).move(70, 90)
         self.id_input = QLineEdit(self)
-        self.id_input.setGeometry(160, 85, 220, 30)
-        continue_button = QPushButton("Continue", self, clicked=self.login)
-        continue_button.setGeometry(160, 140, 220, 35)
+        self.id_input.setGeometry(160, 85, 240, 32)
+        continue_button = GradientButton("Continue", self, clicked=self.login)
+        continue_button.setGeometry(160, 140, 240, 42)
+        back_button = GradientButton("Back to Portal", self, clicked=self.back_to_portal)
+        back_button.setGeometry(160, 190, 240, 42)
         self.show()
+
+    # ibabalik sa Teacher/Student picker kung galing sa main.py
+    def back_to_portal(self):
+        self.id_input.clear()
+        if self.portal_window is not None:
+            self.hide()
+            self.portal_window.show()
+        else:
+            self.close()
+
+    # X button ng login window — same destination as Back to Portal
+    def closeEvent(self, event):
+        if self.portal_window is not None and not getattr(self.portal_window, "_closing", False):
+            self.portal_window.show()
+        event.accept()
 
     # hahanapin yung ID sa students.csv, che-check ang status, tapos che-check ang session
     def login(self):
@@ -132,9 +156,11 @@ class StudentDashboard(QWidget):
         super().__init__()
         self.student = student
         self.login_window = login_window
+        self.portal_window = getattr(login_window, "portal_window", None)
         self.setWindowTitle("Student Dashboard")
-        self.setGeometry(150, 100, 600, 450)
+        self.setGeometry(150, 100, 640, 480)
         self.selected_category = None
+        start_yellow_canvas(self)
         self.initUI()
 
     # ilalagay yung greeting, category buttons, quiz list, at logout button
@@ -144,15 +170,15 @@ class StudentDashboard(QWidget):
 
         categories = ["English", "Math", "Science", "Computer"]
         for i, category in enumerate(categories):
-            QPushButton(category, self, clicked=lambda checked, c=category: self.show_category(c)).setGeometry(25 + i * 140, 85, 130, 35)
+            GradientButton(category, self, clicked=lambda checked=False, c=category: self.show_category(c)).setGeometry(25 + i * 150, 85, 140, 42)
 
-        QLabel("Available quizzes in this category:", self).move(25, 135)
+        QLabel("Available quizzes in this category:", self).move(25, 140)
         self.quiz_list = QListWidget(self)
-        self.quiz_list.setGeometry(25, 165, 550, 200)
+        self.quiz_list.setGeometry(25, 170, 590, 210)
         self.quiz_list.itemDoubleClicked.connect(self.open_selected_quiz)
 
-        QPushButton("Take Selected Quiz", self, clicked=self.open_selected_quiz).setGeometry(25, 375, 180, 35)
-        QPushButton("Logout", self, clicked=self.logout).setGeometry(445, 375, 130, 35)
+        GradientButton("Take Selected Quiz", self, clicked=self.open_selected_quiz).setGeometry(25, 400, 220, 44)
+        GradientButton("Logout", self, clicked=self.logout).setGeometry(455, 400, 160, 44)
 
     # ipapakita lang ang mga quizzes ng napiling category na published at wala pang grade
     def show_category(self, category):
@@ -198,11 +224,26 @@ class StudentDashboard(QWidget):
         self.take_quiz_window = TakeQuizWindow(self.student, quiz, questions, self)
         self.take_quiz_window.show()
 
-    # tatapusin ang session tapos babalik sa login screen
+    # tatapusin ang session tapos babalik sa role-selection portal (o login kung standalone)
     def logout(self):
+        reply = QMessageBox.question(
+            self,
+            "Logout",
+            "Return to the role selection portal?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.close()  # closeEvent() ang mag-e-end ng session at magbabalik sa portal
+
+    # X button o Logout — i-clear ang session para hindi ma-lock ang Student ID
+    def closeEvent(self, event):
         end_session(self.student["student_id"])
-        self.close()
-        self.login_window.show()
+        if self.portal_window is not None:
+            self.login_window.hide()
+            self.portal_window.show()
+        else:
+            self.login_window.show()
+        event.accept()
 
 
 # window kung saan sinasagutan ng estudyante ang isang tanong sa bawat pagkakataon,
@@ -312,8 +353,7 @@ class TakeQuizWindow(QWidget):
                 record[self.quiz["quiz_id"]] = ""
         write_csv(STUDENTS_FILE, students, fields)
 
-        end_session(self.student["student_id"])
-
+        # huwag i-end_session dito — naka-login pa ang estudyante hanggang Logout
         self.result_window = ResultWindow(self.quiz["title"], correct, len(self.questions), breakdown, self.dashboard)
         self.result_window.show()
         self.close()
@@ -351,9 +391,13 @@ class ResultWindow(QWidget):
         layout.addWidget(back_button)
 
     def back_to_dashboard(self):
-        self.dashboard.load_quiz_list()
-        self.dashboard.show()
         self.close()
+
+    def closeEvent(self, event):
+        if self.dashboard is not None:
+            self.dashboard.load_quiz_list()
+            self.dashboard.show()
+        event.accept()
 
 
 if __name__ == "__main__":
