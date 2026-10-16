@@ -69,7 +69,7 @@ class QuizDialog(QDialog):
         self.category.currentTextChanged.connect(self.update_quiz_id_preview)
 
         self.max_item = QSpinBox()
-        self.max_item.setRange(1, 999)
+        self.max_item.setRange(10, 999)
         self.time_limit = QSpinBox()
         self.time_limit.setRange(1, 999)
 
