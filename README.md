@@ -126,11 +126,19 @@ data/
 
 | File | Role |
 | :--- | :--- |
-| `main.py` | Entry point — role-select window (Teacher / Student); imports the two classes below rather than redefining anything. |
-| `teacher_system.py` | Professor side: `ProfessorLogin`, `ProfessorDashboard` (grade sheet, add/import/delete students, lock grades), `QuizManagerWindow`, `QuestionDialog` / `QuestionManagerWindow` (question bank), plus every shared CSV/JSON helper function. |
-| `student_system.py` | Student side: `StudentLogin`, `StudentDashboard`, `TakeQuizWindow` (countdown timer, auto-finalize on timeout/close), `ResultWindow`. Imports its file/CSV helpers from `teacher_system.py` instead of duplicating them. |
+| `main.py` | Main launcher — role-select screen for the teacher/student entry points. |
+| `newMAIN_LOL.py` | Alternate/experimental launcher kept in the project for testing and comparison. |
+| `Professor.py` | Professor class/model definitions and core professor-related logic. |
+| `student.py` | Student class/model definitions and student-related data handling. |
+| `teacher_system.py` | Professor-side application logic, dashboard flow, and shared CSV/JSON helpers. |
+| `student_system.py` | Student-side application logic, quiz flow, and result handling. |
+| `PROFESSOR_GUI.py` | Professor UI components and windows for the professor dashboard. |
+| `STUDENT_GUI.py` | Student UI components and windows for the student dashboard and quiz screens. |
+| `PROFESSOR_FUNCTS.py` | Professor-side function handlers and actions tied to the GUI. |
+| `STUDENT_FUNCTS.py` | Student-side function handlers for quiz operations and responses. |
+| `ui_theme.py` | Shared styling and theme configuration for the desktop interface. |
 
-Run any file on its own for testing (`python teacher_system.py` / `python student_system.py`), or run `main.py` for the normal combined entry point.
+Use the main entry point for the standard project run (`python main.py`). Individual modules can also be tested directly when needed, for example: `python teacher_system.py`, `python student_system.py`, or the specific GUI/function files during debugging.
 
 </details>
 
