@@ -1,0 +1,112 @@
+[
+  {
+    "qtype": "MCQ",
+    "text": "Which of the following best describes the Time Complexity of searching for an element in a balanced Binary Search Tree (BST)?",
+    "choices": [
+      "O(1)",
+      "O(n)",
+      "O(log n)",
+      "O(n^2)"
+    ],
+    "correct_index": 2
+  },
+  {
+    "qtype": "MCQ",
+    "text": "In Object-Oriented Programming (OOP), what principle allows a subclass to provide a specific implementation of a method that is already provided by its parent class?",
+    "choices": [
+      "Encapsulation",
+      "Method Overriding",
+      "Abstraction",
+      "Method Overloading"
+    ],
+    "correct_index": 1
+  },
+  {
+    "qtype": "MCQ",
+    "text": "Which data structure operates on a Last-In, First-Out (LIFO) basis?",
+    "choices": [
+      "Queue",
+      "Stack",
+      "Array",
+      "Linked List"
+    ],
+    "correct_index": 1
+  },
+  {
+    "qtype": "MCQ",
+    "text": "What is the main function of an Operating System's CPU Scheduler?",
+    "choices": [
+      "To allocate RAM memory blocks to processes",
+      "To select which process in memory is ready to execute and allocate CPU time to it",
+      "To translate source code into machine code",
+      "To manage network protocols and IP addresses"
+    ],
+    "correct_index": 1
+  },
+  {
+    "qtype": "MCQ",
+    "text": "Which HTTP status code indicates that a requested resource could not be found on the server?",
+    "choices": [
+      "200",
+      "301",
+      "404",
+      "500"
+    ],
+    "correct_index": 2
+  },
+  {
+    "qtype": "MCQ",
+    "text": "In Python, which built-in data type is immutable?",
+    "choices": [
+      "List",
+      "Dictionary",
+      "Set",
+      "Tuple"
+    ],
+    "correct_index": 3
+  },
+  {
+    "qtype": "MCQ",
+    "text": "Which sorting algorithm has a guaranteed worst-case time complexity of O(n log n)?",
+    "choices": [
+      "Quick Sort",
+      "Merge Sort",
+      "Bubble Sort",
+      "Insertion Sort"
+    ],
+    "correct_index": 1
+  },
+  {
+    "qtype": "MCQ",
+    "text": "In relational database management systems (RDBMS), which SQL keyword is used to eliminate duplicate rows from a query result?",
+    "choices": [
+      "UNIQUE",
+      "DISTINCT",
+      "GROUP BY",
+      "REMOVE"
+    ],
+    "correct_index": 1
+  },
+  {
+    "qtype": "MCQ",
+    "text": "What does a \"Null Pointer Exception\" (or dereferencing a null pointer) mean in programming?",
+    "choices": [
+      "The code contains a infinite loop.",
+      "The program is trying to access memory using a pointer/reference that points to no valid object.",
+      "The stack memory has exceeded its capacity.",
+      "A variable has been defined twice in the same scope."
+    ],
+    "correct_index": 1
+  },
+  {
+    "qtype": "MCQ",
+    "text": "Which graph traversal algorithm uses a Queue data structure for its implementation?",
+    "choices": [
+      "Breadth-First Search (BFS)",
+      "Depth-First Search (DFS)",
+      "Dijkstra's Algorithm",
+      "Prim's Algorithm"
+    ],
+    "correct_index": 0
+  }
+]

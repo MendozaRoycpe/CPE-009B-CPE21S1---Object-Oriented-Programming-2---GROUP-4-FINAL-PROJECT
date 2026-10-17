@@ -1,1 +1,2 @@
-student_id,device_id,attempted_at
+conflict_id,student_id,device_id,issue_type,description,attempted_at,status
+CONF_0001,2513234,O_MEN_DOZA,Tab Switch / Window Focus Loss #1,Incident recorded for student 2513234,2026-10-17 08:28:14,Flagged
