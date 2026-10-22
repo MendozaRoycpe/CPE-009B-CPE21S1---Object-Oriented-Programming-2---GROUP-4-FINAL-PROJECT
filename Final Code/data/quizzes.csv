@@ -1,0 +1,4 @@
+quiz_id,title,category,max_item,time_limit_minutes,published,date_published
+4001,Comprehensive Computer Systems,Computer,10,15,yes,2026-10-23 02:03:33
+3001,STEM Mathematics Exam,Math,10,10,no,
+2001,cells,Science,10,10,yes,2026-10-17 02:45:52
