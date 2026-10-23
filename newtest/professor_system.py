@@ -9,9 +9,11 @@ from PyQt6.QtWidgets import (
     QHeaderView, QFormLayout, QDialogButtonBox, QSpinBox, QFileDialog,
     QAbstractItemView, QInputDialog, QTextEdit, QFrame
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QRectF
+from PyQt6.QtGui import QPainter, QPen, QColor, QPainterPath
 
 import main
+
 
 class AddStudentDialog(QDialog):
     def __init__(self, parent=None):
@@ -103,9 +105,8 @@ class QuestionDialog(QDialog):
             layout.addRow(f"Option {i + 1}:", box)
             self.choice_rows.append(layout.rowCount() - 1)
 
-        self.correct_box = QSpinBox()
-        self.correct_box.setRange(1, 4)
-        layout.addRow("Correct Choice # (1=True for T/F):", self.correct_box)
+        self.correct_box = QComboBox()
+        layout.addRow("Correct Answer Choice:", self.correct_box)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
@@ -122,16 +123,31 @@ class QuestionDialog(QDialog):
             for i, box in enumerate(self.choice_inputs):
                 if i < len(choices):
                     box.setText(choices[i])
-            self.correct_box.setValue(existing.get("correct_index", existing.get("correct_option_index", 0)) + 1)
-
-        self.toggle_choice_fields(self.type_box.currentText())
+            
+            c_idx = existing.get("correct_index", existing.get("correct_option_index", 0))
+            self.toggle_choice_fields(self.type_box.currentText())
+            if 0 <= c_idx < self.correct_box.count():
+                self.correct_box.setCurrentIndex(c_idx)
+        else:
+            self.toggle_choice_fields(self.type_box.currentText())
 
     def toggle_choice_fields(self, qtype):
         is_mcq = (qtype == "Multiple Choice Question")
         form = self.layout()
         for row in self.choice_rows:
             form.setRowVisible(row, is_mcq)
-        self.correct_box.setRange(1, 4 if is_mcq else 2)
+        
+        current_idx = self.correct_box.currentIndex()
+        self.correct_box.clear()
+        if is_mcq:
+            self.correct_box.addItems(["Option 1", "Option 2", "Option 3", "Option 4"])
+        else:
+            self.correct_box.addItems(["True", "False"])
+
+        if 0 <= current_idx < self.correct_box.count():
+            self.correct_box.setCurrentIndex(current_idx)
+        else:
+            self.correct_box.setCurrentIndex(0)
         self.adjustSize()
 
     def get_data(self):
@@ -142,7 +158,7 @@ class QuestionDialog(QDialog):
             choices = [box.text().strip() for box in self.choice_inputs if box.text().strip()]
         else:
             choices = ["True", "False"]
-        correct_index = self.correct_box.value() - 1
+        correct_index = self.correct_box.currentIndex()
         return {"qtype": qtype, "text": text, "choices": choices, "correct_index": correct_index}
 
 
@@ -152,15 +168,15 @@ class QuestionManagerWindow(QDialog):
         main.apply_app_icon(self)
         self.quiz_id = quiz_id
         self.setWindowTitle(f"Questions — {quiz_title}")
-        self.setMinimumSize(600, 520)
+        self.setMinimumSize(700, 520)
         layout = QVBoxLayout(self)
 
         self.count_label = QLabel()
         layout.addWidget(self.count_label)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(2)
-        self.table.setHorizontalHeaderLabels(["Type", "Question"])
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(["Type", "Question", "Correct Answer"])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         layout.addWidget(self.table, 1)
@@ -183,8 +199,15 @@ class QuestionManagerWindow(QDialog):
         for row, question in enumerate(questions):
             qtype_mapped = "Multiple Choice Question" if question.get("qtype") == "MCQ" or len(question.get("choices", [])) == 4 else "True or False"
             q_text = question.get("text", question.get("question", ""))
+            
+            choices = question.get("choices", question.get("options", []))
+            c_idx = question.get("correct_index", question.get("correct_option_index", 0))
+            correct_text = choices[c_idx] if 0 <= c_idx < len(choices) else "N/A"
+
             self.table.setItem(row, 0, QTableWidgetItem(qtype_mapped))
             self.table.setItem(row, 1, QTableWidgetItem(q_text))
+            self.table.setItem(row, 2, QTableWidgetItem(correct_text))
+
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
     def add_question(self):
@@ -375,6 +398,53 @@ class QuizManagerWindow(QDialog):
         self.load_table()
 
 
+class EyeToggleButton(QPushButton):
+    """Custom clean vector eye icon button without pixelated emojis or broken borders."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.is_open = False
+        self.setFixedWidth(36)
+        self.setFixedHeight(32)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet("QPushButton { background: transparent; border: none; } QPushButton:hover { background-color: #F1F5F9; border-radius: 6px; }")
+
+    def toggle_state(self):
+        self.is_open = not self.is_open
+        self.update()
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        pen = QPen(QColor("#475569"), 2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+
+        w, h = self.width(), self.height()
+        cx, cy = w / 2, h / 2
+
+        # Eye shape path
+        path = QPainterPath()
+        path.moveTo(cx - 10, cy)
+        path.quadTo(cx, cy - 8, cx + 10, cy)
+        path.quadTo(cx, cy + 8, cx - 10, cy)
+        painter.drawPath(path)
+
+        # Center pupil dot
+        painter.setBrush(QColor("#475569"))
+        painter.drawEllipse(QRectF(cx - 3, cy - 3, 6, 6))
+
+        # Slash line if closed/hidden
+        if not self.is_open:
+            slash_pen = QPen(QColor("#EF4444"), 2)
+            slash_pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            painter.setPen(slash_pen)
+            painter.drawLine(int(cx - 9), int(cy + 7), int(cx + 9), int(cy - 7))
+
+        painter.end()
+
+
 class ProfessorLogin(QWidget):
     def __init__(self, launcher_window=None):
         super().__init__()
@@ -395,10 +465,44 @@ class ProfessorLogin(QWidget):
         layout.addWidget(title)
 
         layout.addWidget(QLabel("Password:"))
+        
+        # Outer Border Container Frame
+        self.input_container = QFrame()
+        self.input_container.setObjectName("PasswordBox")
+        self.input_container.setStyleSheet("""
+            QFrame#PasswordBox {
+                background-color: #FFFFFF;
+                border: 1px solid #CBD5E1;
+                border-radius: 10px;
+            }
+            QFrame#PasswordBox:focus-within {
+                border: 2px solid #D97706;
+                background-color: #FFFEF5;
+            }
+        """)
+
+        container_layout = QHBoxLayout(self.input_container)
+        container_layout.setContentsMargins(10, 2, 4, 2)
+        container_layout.setSpacing(0)
+
         self.password_input = QLineEdit()
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_input.returnPressed.connect(self.login)
-        layout.addWidget(self.password_input)
+        self.password_input.setStyleSheet("""
+            QLineEdit {
+                background: transparent;
+                border: none;
+                padding: 6px 0px;
+                color: #0F172A;
+            }
+        """)
+        container_layout.addWidget(self.password_input, 1)
+
+        self.toggle_btn = EyeToggleButton()
+        self.toggle_btn.clicked.connect(self.toggle_password_visibility)
+        container_layout.addWidget(self.toggle_btn)
+
+        layout.addWidget(self.input_container)
 
         login_button = main.GradientButton("Login", clicked=self.login)
         layout.addWidget(login_button)
@@ -413,6 +517,13 @@ class ProfessorLogin(QWidget):
         layout.addWidget(hint)
 
         layout.addStretch()
+
+    def toggle_password_visibility(self):
+        self.toggle_btn.toggle_state()
+        if self.toggle_btn.is_open:
+            self.password_input.setEchoMode(QLineEdit.EchoMode.Normal)
+        else:
+            self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
 
     def login(self):
         password = self.password_input.text()
@@ -461,7 +572,6 @@ class ProfessorDashboard(QWidget):
         main_layout.setContentsMargins(25, 20, 25, 20)
         main_layout.setSpacing(15)
 
-        # Centered enlarged title + Upper Right Refresh button
         header_layout = QHBoxLayout()
         title = QLabel("PROFESSOR DASHBOARD")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -476,7 +586,6 @@ class ProfessorDashboard(QWidget):
         header_layout.addWidget(btn_refresh)
         main_layout.addLayout(header_layout)
 
-        # Search Bar
         search_layout = QHBoxLayout()
         search_layout.addWidget(QLabel("Search Student by Name:"))
         self.search_input = QLineEdit()
@@ -485,14 +594,12 @@ class ProfessorDashboard(QWidget):
         search_layout.addWidget(self.search_input)
         main_layout.addLayout(search_layout)
 
-        # Student Table
         self.student_table = QTableWidget()
         self.student_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.student_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.student_table.cellClicked.connect(self.select_student)
         main_layout.addWidget(self.student_table, 1)
 
-        # 2x4 Grid Buttons starting from Add Student
         btn_grid = QGridLayout()
         btn_grid.setSpacing(12)
 
@@ -506,13 +613,11 @@ class ProfessorDashboard(QWidget):
         btn_lock = main.GradientButton("Lock Grade", clicked=self.lock_grade)
         btn_quiz_mgr = main.GradientButton("Quiz Manager", clicked=self.quiz_manager)
 
-        # Row 1 (2x4)
         btn_grid.addWidget(btn_add, 0, 0)
         btn_grid.addWidget(btn_import, 0, 1)
         btn_grid.addWidget(btn_edit, 0, 2)
         btn_grid.addWidget(btn_delete, 0, 3)
 
-        # Row 2 (2x4)
         btn_grid.addWidget(btn_export, 1, 0)
         btn_grid.addWidget(btn_reopen, 1, 1)
         btn_grid.addWidget(btn_lock, 1, 2)
@@ -520,7 +625,6 @@ class ProfessorDashboard(QWidget):
 
         main_layout.addLayout(btn_grid)
 
-        # Bottom Bar with Logout anchored on the Right
         bottom_layout = QHBoxLayout()
         self.status_label = QLabel("Select a student row to perform student-specific actions.")
         
@@ -862,30 +966,3 @@ class ProfessorDashboard(QWidget):
         for record in students:
             if lock_field not in record:
                 record[lock_field] = ""
-
-        main.write_csv(main.STUDENTS_CSV, students, fields)
-        self.load_grade_table()
-        QMessageBox.information(self, "Grade Locked", "The grade is now permanently locked.")
-
-    def quiz_manager(self):
-        QuizManagerWindow(self).exec()
-        self.load_grade_table()
-
-    def logout(self):
-        reply = QMessageBox.question(
-            self,
-            "Logout",
-            "Return to the main role selection portal?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
-        if reply == QMessageBox.StandardButton.Yes:
-            self.close()
-
-    def closeEvent(self, event):
-        self.login_window.password_input.clear()
-        if self.launcher_window:
-            self.login_window.hide()
-            self.launcher_window.show()
-        else:
-            self.login_window.show()
-        event.accept()

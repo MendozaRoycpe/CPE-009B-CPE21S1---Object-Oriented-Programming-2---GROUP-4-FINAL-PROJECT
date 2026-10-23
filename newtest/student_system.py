@@ -183,7 +183,10 @@ class TakeQuizWindow(QWidget):
             self.choice_radios[self.answers[self.index]].setChecked(True)
 
         self.btn_prev.setEnabled(self.index > 0)
-        self.btn_next.setEnabled(self.index < total - 1)
+        
+        # Hide "Next Question" on the last question, show it otherwise
+        is_last = (self.index >= total - 1)
+        self.btn_next.setVisible(not is_last)
 
     def tick(self):
         self.seconds_left -= 1
