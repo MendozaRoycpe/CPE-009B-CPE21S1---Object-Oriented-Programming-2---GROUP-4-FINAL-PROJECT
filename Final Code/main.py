@@ -14,9 +14,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QTimer, QPropertyAnimation, QEasingCurve, QRectF, QPointF
 from PyQt6.QtGui import QIcon, QColor, QPainter, QLinearGradient, QFont, QPainterPath, QBrush, QPen, QPixmap, QPolygonF
 
-# ==========================================
-# FILE PATHS & STORAGE INITIALIZATION
-# ==========================================
+# File Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 QUESTIONS_DIR = os.path.join(DATA_DIR, "questions")
@@ -46,18 +44,21 @@ def apply_app_icon(widget: QWidget):
     if os.path.exists(ICON_PATH):
         widget.setWindowIcon(QIcon(ICON_PATH))
 
-# ==========================================
-# HELPER & DATA FUNCTIONS
-# ==========================================
+# Helper & Data Functions
+
+# Hashing function for password storage
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode("utf-8")).hexdigest()
 
+# Get the device hostname for session tracking 
 def get_device_id() -> str:
     return socket.gethostname()
 
+# Get the current time 
 def get_spaced_now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+# For calculating the grades
 def calculate_remarks(score: int, total: int) -> str:
     if total <= 0:
         return "No grades yet"
@@ -71,6 +72,7 @@ def calculate_remarks(score: int, total: int) -> str:
     else:
         return "Poor"
 
+# Responsible for animation effect when the widget is opened
 def apply_fade_in(widget, duration=350):
     effect = QGraphicsOpacityEffect(widget)
     widget.setGraphicsEffect(effect)
@@ -82,6 +84,7 @@ def apply_fade_in(widget, duration=350):
     anim.start()
     widget._fade_anim = anim
 
+# Read, write, getter for CSV files
 def read_csv(filename: str) -> list:
     if not os.path.isfile(filename):
         return []
@@ -101,6 +104,7 @@ def get_student_fields() -> list:
         header = next(csv.reader(file), None)
     return header if header else STUDENT_FIELDS.copy()
 
+#loads the csv files of the students, retired ids, quizzes, and sessions
 def load_students() -> list:
     return read_csv(STUDENTS_CSV)
 
@@ -137,6 +141,9 @@ def save_questions(quiz_id: str, questions: list):
     with open(questions_path(quiz_id), "w", encoding="utf-8") as file:
         json.dump(questions, file, indent=2)
 
+# Responsible for generating a quiz id that is based on the subeject 
+# e.g english = 100n, science = 200n, math = 300n, computer = 400n where n is the number of quizzes in that category
+
 def generate_quiz_id(category: str) -> str:
     base_prefix = CATEGORY_PREFIXES.get(category, "100")
     highest = 0
@@ -148,6 +155,7 @@ def generate_quiz_id(category: str) -> str:
                 highest = max(highest, int(suffix))
     return f"{base_prefix}{highest + 1}"
 
+#Responsible for computing the total score and remarks of a student based on the quizzes they have taken
 def compute_total_and_remark(student: dict, quizzes: list):
     total_score = 0
     total_possible = 0
@@ -174,6 +182,7 @@ def compute_total_and_remark(student: dict, quizzes: list):
 
     return total_score, total_possible, calculate_remarks(total_score, total_possible)
 
+#responsible for loading, saving, starting, and ending sessions for students
 def load_sessions() -> list:
     return read_csv(SESSIONS_CSV)
 
@@ -188,8 +197,9 @@ def start_session(student_id: str) -> str:
         if session.get("student_id") == student_id and session.get("device_id") == device_id:
             return "ok"
 
+# this function is responsible for creating a new session for a student and saving it to the sessions csv file
     sessions.append({
-        "session_id": f"SESS_{len(sessions) + 1:04d}",
+        "session_id": f"SESS_{len(sessions) + 1:04d}", # creates a unique session id that is only 4 numbers long because of 1:04d
         "student_id": student_id,
         "quiz_id": "",
         "score": "0",
@@ -205,6 +215,8 @@ def end_session(student_id: str):
     sessions = [s for s in load_sessions() if s.get("student_id") != student_id]
     save_sessions(sessions)
 
+
+# Ensuring the files are created and initialized with default data if they don't exist
 def ensure_files():
     os.makedirs(DATA_DIR, exist_ok=True)
     os.makedirs(QUESTIONS_DIR, exist_ok=True)
@@ -228,6 +240,8 @@ def ensure_files():
             writer.writerow({"password_hash": hash_password("jabaiskript")})
 
     quizzes = read_csv(QUIZZES_CSV)
+
+    # If no quizzes exist, create default quizzes and a sample student
     if not quizzes:
         default_quizzes = [
             {"quiz_id": "4001", "title": "Comprehensive Computer Systems", "category": "Computer", "max_item": "10", "time_limit_minutes": "15", "published": "no", "date_published": ""},
@@ -245,9 +259,9 @@ def ensure_files():
                 sample_student[q["quiz_id"]] = ""
             students.append(sample_student)
             save_students(students)
-
+            
+# Create up and down arrow images for QSpinBox buttons and save them in the assets directory
 def build_spinbox_arrows() -> tuple:
-    """Draw small up/down arrow PNGs for QSpinBox buttons (Qt stylesheets can't draw text arrows)."""
     assets_dir = os.path.join(DATA_DIR, "assets")
     os.makedirs(assets_dir, exist_ok=True)
     paths = {}
@@ -269,17 +283,18 @@ def build_spinbox_arrows() -> tuple:
         paths[name] = path.replace("\\", "/")
     return paths["up"], paths["down"]
 
+#Returns a QTableWidgetItem with the given text and sets it to be selectable and enabled
 def table_cell(text: str) -> QTableWidgetItem:
     item = QTableWidgetItem(text)
     item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
     return item
 
-# ==========================================
-# CUSTOM ANIMATED BUTTON (WITH ACTIVE CLICK BORDER HIGHLIGHT)
-# ==========================================
+
+#Custom Animated buttons
 class GradientButton(QPushButton):
     active_button = None
-
+    
+#Responsible for creating a gradient button with hover and click effects
     def __init__(self, text="", parent=None, clicked=None):
         super().__init__(text, parent)
         self._shift = 0.0
@@ -299,14 +314,15 @@ class GradientButton(QPushButton):
         if clicked is not None:
             super().clicked.connect(clicked)
 
+#Responsible for starting the timer when the mouse enters or leaves the button area
     def enterEvent(self, event):
         self._timer.start()
         super().enterEvent(event)
-
+#Responsible for starting the timer when the mouse leaves the button area
     def leaveEvent(self, event):
         self._timer.start()
         super().leaveEvent(event)
-
+#Responsible for starting the timer when the mouse is pressed on the button
     def mousePressEvent(self, event):
         self._press = 1.0
         
@@ -320,6 +336,9 @@ class GradientButton(QPushButton):
         self._timer.start()
         super().mousePressEvent(event)
 
+#Animation step that runs about every 16 ms while the button is animating.
+#It eases the hover glow in or out, scrolls the gradient colors while the mouse is over the
+#button, fades out the click effect, and stops the timer once everything has settled.
     def _tick(self):
         target_hover = 1.0 if self.underMouse() else 0.0
         self._hover += (target_hover - self._hover) * 0.16
@@ -336,6 +355,9 @@ class GradientButton(QPushButton):
             
         self.update()
 
+#Draws the button by hand: a rounded rectangle filled with the moving gold gradient,
+#a white glow border while hovering, an orange border when selected or focused,
+#and the bold button text centered on top.
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -379,9 +401,8 @@ class GradientButton(QPushButton):
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, self.text())
         painter.end()
 
-# ==========================================
-# CLEAN WHITE BACKGROUND + TIP GOLD ACCENTS
-# ==========================================
+
+# Background and widget styles for the whole application
 APP_STYLE = """
 QWidget {
     background-color: #FFFFFF;
@@ -557,10 +578,11 @@ QProgressBar::chunk {
 }
 """
 
-# ==========================================
-# MAIN PORTAL LAUNCHER
-# ==========================================
+
+# Launcher Window
 class MainLauncher(QWidget):
+    #Sets up the launcher window (icon, title, size) and builds its layout.
+    #_closing is a flag that tells the login windows the whole app is shutting down.
     def __init__(self):
         super().__init__()
         apply_app_icon(self)
@@ -569,6 +591,8 @@ class MainLauncher(QWidget):
         self._closing = False
         self.initUI()
 
+    #Builds the launcher screen: the title, the subtitle, and the Professor Portal
+    #and Student Portal buttons that open each login window.
     def initUI(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(40, 35, 40, 35)
@@ -592,6 +616,9 @@ class MainLauncher(QWidget):
         layout.addStratch() if hasattr(layout, 'addStratch') else layout.addStretch()
         self.show()
 
+    #Shows a window that was already created (so the same login window is not duplicated).
+    #If none exists yet, or Qt already deleted it (RuntimeError), it creates a new one
+    #by calling factory(), saves it on self under attr_name, and shows it.
     def _reuse_or_create(self, attr_name, factory):
         old = getattr(self, attr_name, None)
         if old is not None:
@@ -605,16 +632,23 @@ class MainLauncher(QWidget):
         setattr(self, attr_name, window)
         window.show()
 
+    #Hides the launcher and opens the Professor login window.
+    #The import is done here instead of at the top because professor_system imports main,
+    #and importing it at the top would cause a circular import.
     def open_professor(self):
         from professor_system import ProfessorLogin
         self.hide()
         self._reuse_or_create("prof_login", lambda: ProfessorLogin(launcher_window=self))
 
+    #Hides the launcher and opens the Student login window.
+    #Imported here for the same reason: student_system also imports main.
     def open_student(self):
         from student_system import StudentLogin
         self.hide()
         self._reuse_or_create("student_login", lambda: StudentLogin(launcher_window=self))
 
+    #Runs when the launcher window is closed. Sets the _closing flag and quits the
+    #whole application so no other window is left running in the background.
     def closeEvent(self, event):
         self._closing = True
         app = QApplication.instance()
@@ -622,9 +656,11 @@ class MainLauncher(QWidget):
             app.quit()
         event.accept()
 
-# ==========================================
-# ENTRY POINT
-# ==========================================
+
+# Starting point of the program. It sets the Windows taskbar app ID (so the taskbar shows
+# our icon instead of Python's), creates the data files if they are missing, starts the Qt
+# application, applies the stylesheet (with the spin box arrow images), sets the app icon,
+# shows the launcher, and runs the event loop until the app is closed.
 def main():
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("group4.quizsystem.app.1")

@@ -318,21 +318,23 @@ class QuizManagerWindow(QDialog):
         self.table.setHorizontalHeaderLabels(["Quiz ID", "Title", "Category", "Max Items", "Time Limit", "Published", "Date Published"])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table, 1)
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
 
         button_layout = QHBoxLayout()
         create_button = main.GradientButton("Create Quiz", clicked=self.create_quiz)
         questions_button = QPushButton("Manage Questions", clicked=self.manage_questions)
         publish_button = QPushButton("Publish / Unpublish", clicked=self.toggle_publish)
         delete_button = QPushButton("Delete Quiz", clicked=self.delete_quiz)
-        refresh_button = QPushButton("Refresh", clicked=self.load_table)
 
-        for btn in (create_button, questions_button, publish_button, delete_button, refresh_button):
+        for btn in (create_button, questions_button, publish_button, delete_button):
             button_layout.addWidget(btn)
 
         layout.addLayout(button_layout)
         self.load_table()
 
     def load_table(self):
+
         quizzes = main.load_quizzes()
         self.table.setRowCount(len(quizzes))
         for row, quiz in enumerate(quizzes):
@@ -558,13 +560,9 @@ class ProfessorDashboard(QWidget):
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("font-size: 24px; font-weight: bold; color: #111111;")
         
-        btn_refresh = main.GradientButton("Refresh", clicked=self.load_grade_table)
-        btn_refresh.setFixedWidth(120)
-
         header_layout.addStretch()
         header_layout.addWidget(title)
         header_layout.addStretch()
-        header_layout.addWidget(btn_refresh)
         main_layout.addLayout(header_layout)
 
         search_layout = QHBoxLayout()
