@@ -1,3 +1,59 @@
+"""STUDENT SYSTEM — GUI MODULE
+
+PURPOSE
+  Student login, category/quiz selection, timed attempts, grading results, and grade history.
+
+DEPENDENCIES
+  - PyQt6.
+  - Project main.py must provide the shared data helpers and styling helpers.
+
+FUNCTION / METHOD INDEX (line numbers refer to this file)
+  MyGradesWindow: lines 69-110 (class)
+  MyGradesWindow.__init__: lines 71-77 (method)
+  MyGradesWindow.initUI: lines 79-110 (method)
+  ResultWindow: lines 113-147 (class)
+  ResultWindow.__init__: lines 115-121 (method)
+  ResultWindow.initUI: lines 123-138 (method)
+  ResultWindow.back_to_dashboard: lines 140-141 (method)
+  ResultWindow.closeEvent: lines 143-147 (method)
+  TakeQuizWindow: lines 150-361 (class)
+  TakeQuizWindow.__init__: lines 152-171 (method)
+  TakeQuizWindow.initUI: lines 173-219 (method)
+  TakeQuizWindow.render_question: lines 221-247 (method)
+  TakeQuizWindow.tick_display_only: lines 249-252 (method)
+  TakeQuizWindow.save_current_answer: lines 254-261 (method)
+  TakeQuizWindow.tick: lines 263-271 (method)
+  TakeQuizWindow.prev_question: lines 273-277 (method)
+  TakeQuizWindow.next_question: lines 279-284 (method)
+  TakeQuizWindow.confirm_submit: lines 286-306 (method)
+  TakeQuizWindow.finish_quiz: lines 308-356 (method)
+  TakeQuizWindow.closeEvent: lines 358-361 (method)
+  StudentDashboard: lines 364-480 (class)
+  StudentDashboard.__init__: lines 366-375 (method)
+  StudentDashboard.initUI: lines 377-402 (method)
+  StudentDashboard.show_category: lines 404-406 (method)
+  StudentDashboard.load_quiz_list: lines 408-426 (method)
+  StudentDashboard.open_selected_quiz: lines 428-455 (method)
+  StudentDashboard.open_my_grades: lines 457-461 (method)
+  StudentDashboard.logout: lines 463-471 (method)
+  StudentDashboard.closeEvent: lines 473-480 (method)
+  StudentLogin: lines 483-555 (class)
+  StudentLogin.__init__: lines 485-491 (method)
+  StudentLogin.initUI: lines 493-515 (method)
+  StudentLogin.login: lines 517-542 (method)
+  StudentLogin.back_to_portal: lines 544-550 (method)
+  StudentLogin.closeEvent: lines 552-555 (method)
+
+IMPORTANT BEHAVIOR / LIMITATIONS
+  - The quiz screen finalizes an unfinished attempt when it closes; the current visible answer is saved first.
+  - The score is stored in the quiz column in students.csv; existing grades are not overwritten by this module.
+  - Session conflict enforcement and the shared CSV schema are delegated to main.py.
+
+MAINTENANCE NOTES
+  - Keep UI code and shared CSV/data helpers in sync with main.py.
+  - Test against a copy of the data folder before using real student records.
+  - This module uses PyQt6 and is intended to be launched through the project entry point.
+"""
 import os 
 from PyQt6.QtWidgets import (  # GUI widgets
     QWidget, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
@@ -111,6 +167,7 @@ class TakeQuizWindow(QWidget):  # the quiz screen
         self.setWindowTitle(f"Quiz: {quiz['title']}")
         self.initUI()
         self.render_question()  # show first question
+        self.tick_display_only()
 
     def initUI(self):  # build the quiz layout
         layout = QVBoxLayout(self)
@@ -188,36 +245,45 @@ class TakeQuizWindow(QWidget):  # the quiz screen
         is_last = (self.index >= total - 1)
         self.btn_next.setVisible(not is_last)
 
+    def tick_display_only(self):
+        """Render the initial countdown without consuming a second."""
+        minutes, seconds = divmod(max(self.seconds_left, 0), 60)
+        self.timer_label.setText(f"Time remaining: {minutes:02d}:{seconds:02d}")
+
+    def save_current_answer(self):
+        """Save the selected option for the question currently on screen."""
+        checked_id = self.choice_group.checkedId()
+        if checked_id != -1:
+            self.answers[self.index] = checked_id
+        else:
+            # A cleared radio selection should not leave a stale answer behind.
+            self.answers.pop(self.index, None)
+
     def tick(self):  # runs every second for the timer
         self.seconds_left -= 1
         minutes, seconds = divmod(max(self.seconds_left, 0), 60)  # split into minutes and seconds
-        self.timer_label.setText(f"⏱️ {minutes:02d}:{seconds:02d}")
+        self.timer_label.setText(f"Time remaining: {minutes:02d}:{seconds:02d}")
         if self.seconds_left <= 0:
+            self.save_current_answer()  # include the visible question before auto-submit
             self.timer.stop()  # stop the timer
             QMessageBox.information(self, "Time's Up", "Time is up — submitting what you've answered so far.")
             self.finish_quiz()  # submit the quiz
 
     def prev_question(self):  # go to previous question
-        checked_id = self.choice_group.checkedId()  # get the selected choice
-        if checked_id != -1:  # -1 means nothing selected
-            self.answers[self.index] = checked_id  # save the answer
+        self.save_current_answer()
         if self.index > 0:  # not on the first question
             self.index -= 1  # move back one
             self.render_question()  # show that question
 
     def next_question(self):  # go to next question
-        checked_id = self.choice_group.checkedId()  # get the selected choice
-        if checked_id != -1:
-            self.answers[self.index] = checked_id  # save the answer
+        self.save_current_answer()
 
         if self.index + 1 < len(self.questions):  # not on the last question
             self.index += 1  # move forward one
             self.render_question()  # show that question
 
     def confirm_submit(self):  # ask before submitting
-        checked_id = self.choice_group.checkedId()  # get the selected choice
-        if checked_id != -1:
-            self.answers[self.index] = checked_id  # save the answer
+        self.save_current_answer()
 
         unanswered = [i + 1 for i in range(len(self.questions)) if i not in self.answers]  # list of unanswered question numbers
         if unanswered:  # if some are unanswered
@@ -244,43 +310,45 @@ class TakeQuizWindow(QWidget):  # the quiz screen
         self.finished = True  # mark as submitted
         self.timer.stop()  # stop the timer
 
-        correct = 0  # number of correct answers
-        breakdown = []  # details for the results window
-        for i, q in enumerate(self.questions):  # loop through each question
-            chosen = self.answers.get(i)  # student's chosen answer
-            c_idx = q.get("correct_index", q.get("correct_option_index", 0))  # index of the correct answer
-            is_correct = chosen == c_idx  # True if the answer is right
-            correct += 1 if is_correct else 0  # add 1 to the score if correct
-            choices = q.get("choices", q.get("options", []))  # get the answer choices
-            chosen_text = choices[chosen] if (chosen is not None and chosen < len(choices)) else "(no answer)"  # text of the chosen answer
-            correct_text = choices[c_idx] if c_idx < len(choices) else "N/A"  # text of the correct answer
-            q_text = q.get("text", q.get("question", ""))  # question text
-            breakdown.append((q_text, chosen_text, correct_text, is_correct))  # add to the breakdown list
+        correct = 0  # number of answers correct
+        breakdown = []  # details shown on the result screen
+        for i, q in enumerate(self.questions):
+            choices = q.get("choices", q.get("options", []))
+            try:
+                c_idx = int(q.get("correct_index", q.get("correct_option_index", 0)))
+            except (TypeError, ValueError):
+                c_idx = -1
+            chosen = self.answers.get(i)
+            valid_key = 0 <= c_idx < len(choices)
+            is_correct = valid_key and chosen == c_idx
+            correct += int(is_correct)
+            chosen_text = choices[chosen] if isinstance(chosen, int) and 0 <= chosen < len(choices) else "(no answer)"
+            correct_text = choices[c_idx] if valid_key else "N/A"
+            q_text = q.get("text", q.get("question", ""))
+            breakdown.append((q_text, chosen_text, correct_text, is_correct))
 
+        # Re-read immediately before saving. Do not overwrite a completed attempt.
         students = main.load_students()
-        for record in students:
-            if record["student_id"] == self.student["student_id"]:
-                record[self.quiz["quiz_id"]] = str(correct)  # save the score under this quiz's column
+        student_record = next((r for r in students if r.get("student_id") == self.student.get("student_id")), None)
+        quiz_id = self.quiz.get("quiz_id", "")
+        if student_record is None:
+            QMessageBox.critical(self, "Save Error", "Your student record could not be found. Please contact your professor.")
+            self.close()
+            return
+        if student_record.get(quiz_id, "") != "":
+            QMessageBox.warning(self, "Attempt Already Recorded", "A grade already exists for this quiz. The existing grade was not overwritten.")
+            self.close()
+            return
         fields = main.get_student_fields()
-        if self.quiz["quiz_id"] not in fields:
-            fields.append(self.quiz["quiz_id"])  # add a new csv column for this quiz if missing
+        if quiz_id not in fields:
+            fields.append(quiz_id)
         for record in students:
-            if self.quiz["quiz_id"] not in record:
-                record[self.quiz["quiz_id"]] = ""  # fill blanks so every row has the column
-        main.write_csv(main.STUDENTS_CSV, students, fields)  # write everything back to the csv
+            record.setdefault(quiz_id, "")
+        student_record[quiz_id] = str(correct)
+        main.write_csv(main.STUDENTS_CSV, students, fields)
 
-        sessions = main.load_sessions()
-        sessions.append({
-            "session_id": f"SESS_{len(sessions) + 1:04d}",  # make an id like sess_0001 from the count
-            "student_id": self.student["student_id"],
-            "quiz_id": self.quiz["quiz_id"],
-            "score": str(correct),
-            "date_taken": main.get_spaced_now(),
-            "remarks": main.calculate_remarks(correct, len(self.questions)),  # pass/fail style remark
-            "device_id": main.get_device_id(),
-            "started_at": main.get_spaced_now()
-        })
-        main.save_sessions(sessions)  # save the new session record
+        # Active-session storage is reserved for login/device tracking.
+        # The completed score is stored in the student's quiz-grade cell above.
 
         self.result_window = ResultWindow(self.quiz["title"], correct, len(self.questions), breakdown, self.dashboard)
         self.result_window.show()  # show the results screen
@@ -363,8 +431,19 @@ class StudentDashboard(QWidget):
             return
 
         quiz_id = item.data(1000)
-        quiz = next(q for q in main.load_quizzes() if q["quiz_id"] == quiz_id)  # find the full quiz record
-        questions = main.load_questions(quiz_id)
+        quiz = next((q for q in main.load_quizzes() if q.get("quiz_id") == quiz_id), None)
+        if quiz is None or quiz.get("published") != "yes":
+            QMessageBox.warning(self, "Quiz Unavailable", "This quiz is no longer published. Refresh the category list.")
+            self.load_quiz_list()
+            return
+        # Recheck the grade immediately before opening to reduce duplicate attempts.
+        fresh_student = next((s for s in main.load_students() if s.get("student_id") == self.student.get("student_id")), None)
+        if fresh_student is None or fresh_student.get(quiz_id, "") != "":
+            QMessageBox.warning(self, "Quiz Already Taken", "This quiz is no longer available for your account.")
+            self.load_quiz_list()
+            return
+        self.student = fresh_student
+        questions = main.select_quiz_questions(quiz) if hasattr(main, "select_quiz_questions") else main.load_questions(quiz_id)
 
         if not questions:  # block empty quizzes
             QMessageBox.warning(self, "No Questions", "This quiz has no questions yet. Tell your professor.")

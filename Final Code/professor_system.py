@@ -1,3 +1,70 @@
+"""PROFESSOR SYSTEM — GUI MODULE
+
+PURPOSE
+  Professor authentication, roster and grade management, quiz publication, question editing, grade locking, and reports.
+
+DEPENDENCIES
+  - PyQt6.
+  - Project main.py must provide CSV/data functions, shared styling, category metadata, and quiz validation helpers.
+
+FUNCTION / METHOD INDEX
+  make_eye_icon: lines 90-125 (function)
+  AddStudentDialog: lines 128-145 (class)
+  AddStudentDialog.__init__: lines 129-142 (method)
+  AddStudentDialog.get_data: lines 144-145 (method)
+  QuizDialog: lines 148-193 (class)
+  QuizDialog.__init__: lines 149-180 (method)
+  QuizDialog.update_quiz_id_preview: lines 182-183 (method)
+  QuizDialog.get_data: lines 185-193 (method)
+  QuestionDialog: lines 196-272 (class)
+  QuestionDialog.__init__: lines 197-242 (method)
+  QuestionDialog.toggle_choice_fields: lines 244-261 (method)
+  QuestionDialog.get_data: lines 263-272 (method)
+  QuestionManagerWindow: lines 275-383 (class)
+  QuestionManagerWindow.__init__: lines 276-303 (method)
+  QuestionManagerWindow.load_list: lines 305-321 (method)
+  QuestionManagerWindow.add_question: lines 323-339 (method)
+  QuestionManagerWindow.edit_question: lines 341-365 (method)
+  QuestionManagerWindow.delete_question: lines 367-383 (method)
+  QuizManagerWindow: lines 386-521 (class)
+  QuizManagerWindow.__init__: lines 387-413 (method)
+  QuizManagerWindow.load_table: lines 415-423 (method)
+  QuizManagerWindow.create_quiz: lines 425-459 (method)
+  QuizManagerWindow.manage_questions: lines 461-472 (method)
+  QuizManagerWindow.toggle_publish: lines 474-498 (method)
+  QuizManagerWindow.delete_quiz: lines 500-521 (method)
+  ProfessorLogin: lines 524-627 (class)
+  ProfessorLogin.__init__: lines 525-531 (method)
+  ProfessorLogin.initUI: lines 533-586 (method)
+  ProfessorLogin.toggle_password_visibility: lines 588-594 (method)
+  ProfessorLogin.reset_password_field: lines 596-598 (method)
+  ProfessorLogin.login: lines 600-614 (method)
+  ProfessorLogin.back_to_portal: lines 616-622 (method)
+  ProfessorLogin.closeEvent: lines 624-627 (method)
+  ProfessorDashboard: lines 630-1068 (class)
+  ProfessorDashboard.__init__: lines 631-640 (method)
+  ProfessorDashboard.initUI: lines 642-705 (method)
+  ProfessorDashboard.load_grade_table: lines 707-709 (method)
+  ProfessorDashboard.populate_table_with_data: lines 711-748 (method)
+  ProfessorDashboard.filter_students_by_name: lines 750-757 (method)
+  ProfessorDashboard.export_grade_report: lines 759-779 (method)
+  ProfessorDashboard.select_student: lines 781-785 (method)
+  ProfessorDashboard._quiz_picker: lines 787-800 (method)
+  ProfessorDashboard.add_student: lines 802-840 (method)
+  ProfessorDashboard.import_students: lines 842-894 (method)
+  ProfessorDashboard.edit_grade: lines 896-946 (method)
+  ProfessorDashboard.delete_student: lines 948-976 (method)
+  ProfessorDashboard.reopen_quiz: lines 978-1005 (method)
+  ProfessorDashboard.lock_grade: lines 1007-1045 (method)
+  ProfessorDashboard.quiz_manager: lines 1047-1049 (method)
+  ProfessorDashboard.logout: lines 1051-1059 (method)
+  ProfessorDashboard.closeEvent: lines 1061-1068 (method)
+
+IMPORTANT BEHAVIOR / LIMITATIONS
+  - The professor login uses the password hash stored in the auth CSV. Change the demo password before using real student data.
+  - Deleting a quiz should remove its metadata, question bank, grade column, and lock column when main.delete_quiz_data is available.
+  - CSV files do not provide safe multi-process transactions; simultaneous writes from multiple devices can still conflict.
+"""
 import sys
 import os
 import csv
@@ -192,7 +259,7 @@ class QuestionDialog(QDialog):
         qtype = "MCQ" if qtype_ui == "Multiple Choice Question" else "TF"
         text = self.text_input.text().strip()
         if qtype == "MCQ":
-            choices = [box.text().strip() for box in self.choice_inputs if box.text().strip()]
+            choices = [box.text().strip() for box in self.choice_inputs]
         else:
             choices = ["True", "False"]
         correct_index = self.correct_box.currentIndex()
@@ -253,8 +320,11 @@ class QuestionManagerWindow(QDialog):
             return
         data = dialog.get_data()
 
-        if not data["text"] or len(data["choices"]) < 2:
-            QMessageBox.warning(self, "Missing Information", "Enter the question text and options.")
+        validation_error = main.validate_question(data) if hasattr(main, "validate_question") else (
+            "Enter the question text and options." if not data["text"] or len(data["choices"]) < 2 else ""
+        )
+        if validation_error:
+            QMessageBox.warning(self, "Invalid Question", validation_error)
             return
 
         questions = main.load_questions(self.quiz_id)
@@ -277,8 +347,11 @@ class QuestionManagerWindow(QDialog):
             return
         data = dialog.get_data()
 
-        if not data["text"] or len(data["choices"]) < 2:
-            QMessageBox.warning(self, "Missing Information", "Enter the question text and options.")
+        validation_error = main.validate_question(data) if hasattr(main, "validate_question") else (
+            "Enter the question text and options." if not data["text"] or len(data["choices"]) < 2 else ""
+        )
+        if validation_error:
+            QMessageBox.warning(self, "Invalid Question", validation_error)
             return
 
         questions[row] = data
@@ -407,9 +480,10 @@ class QuizManagerWindow(QDialog):
             quiz["published"], quiz["date_published"] = "no", ""
         else:
             question_count = len(main.load_questions(quiz["quiz_id"]))
-            if question_count < 10:
+            required = main.required_questions(quiz) if hasattr(main, "required_questions") else max(10, int(quiz.get("max_item", 10) or 10))
+            if question_count < required:
                 QMessageBox.warning(self, "Not Enough Questions",
-                    f"'{quiz['title']}' only has {question_count} question(s) saved. Add at least 10 via \"Manage Questions\" before publishing.")
+                    f"'{quiz['title']}' has {question_count} question(s). Add at least {required} before publishing.")
                 return
             quiz["published"] = "yes"
             quiz["date_published"] = main.get_spaced_now()
@@ -432,8 +506,12 @@ class QuizManagerWindow(QDialog):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        quizzes.pop(row)
-        main.save_quizzes(quizzes)
+        # Delete metadata, question bank, grades and lock column together when helper exists.
+        if hasattr(main, "delete_quiz_data"):
+            main.delete_quiz_data(quiz["quiz_id"])
+        else:
+            quizzes.pop(row)
+            main.save_quizzes(quizzes)
         self.load_table()
 
 
@@ -489,7 +567,12 @@ class ProfessorLogin(QWidget):
         back_button.setObjectName("BtnSecondary")
         layout.addWidget(back_button)
 
-        hint = QLabel("Demo password: jabaiskript")
+        hint_text = (
+            "Demo password: jabaiskript"
+            if main.is_default_password()
+            else "Use your configured professor password."
+        )
+        hint = QLabel(hint_text)
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hint.setStyleSheet("color: gray;")
         layout.addWidget(hint)
@@ -756,7 +839,7 @@ class ProfessorDashboard(QWidget):
             return
 
         try:
-            with open(filename, "r", newline="", encoding="utf-8") as file:
+            with open(filename, "r", newline="", encoding="utf-8-sig") as file:
                 imported = list(csv.DictReader(file))
             if not imported:
                 QMessageBox.warning(self, "Empty File", "The selected CSV file has no student records.")
@@ -830,7 +913,12 @@ class ProfessorDashboard(QWidget):
             QMessageBox.warning(self, "Grade Locked", "This grade has been permanently locked.")
             return
 
-        score, ok = QInputDialog.getInt(self, "Edit Grade", f"Enter score for {label}:", int(current) if current.isdigit() else 0, 0, 999999, 1)
+        quiz_info = next((q for q in main.load_quizzes() if q.get("quiz_id") == quiz_id), None)
+        try:
+            maximum = int(quiz_info.get("max_item", 999999)) if quiz_info else 999999
+        except (TypeError, ValueError):
+            maximum = 999999
+        score, ok = QInputDialog.getInt(self, "Edit Grade", f"Enter score for {label} (0–{maximum}):", int(current) if current.isdigit() else 0, 0, max(0, maximum), 1)
         if not ok:
             return
 
@@ -950,7 +1038,7 @@ class ProfessorDashboard(QWidget):
         self.load_grade_table()
         QMessageBox.information(self, "Grade Locked", "The grade is now permanently locked.")
 
-    def quiz_manager(self):
+    def quiz_manager(self): 
         QuizManagerWindow(self).exec()
         self.load_grade_table()
 
