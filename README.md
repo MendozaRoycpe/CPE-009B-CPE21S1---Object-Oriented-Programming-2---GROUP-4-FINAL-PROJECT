@@ -67,7 +67,6 @@ Question banks support **Multiple Choice (MCQ)** and **True or False (TF)** ques
 | Programming language | Python |
 | Desktop interface | PyQt6 |
 | Student roster and quiz metadata | CSV |
-| Quiz question banks | JSON |
 | Code editor | Visual Studio Code (recommended) |
 | Version control | Git and GitHub |
 | Optional executable packaging | PyInstaller |
