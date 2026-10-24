@@ -1,3 +1,70 @@
+"""PROFESSOR SYSTEM — GUI MODULE
+
+PURPOSE
+  Professor authentication, roster and grade management, quiz publication, question editing, grade locking, and reports.
+
+DEPENDENCIES
+  - PyQt6.
+  - Project main.py must provide CSV/data functions, shared styling, category metadata, and quiz validation helpers.
+
+FUNCTION / METHOD INDEX
+  make_eye_icon: lines 90-125 (function)
+  AddStudentDialog: lines 128-145 (class)
+  AddStudentDialog.__init__: lines 129-142 (method)
+  AddStudentDialog.get_data: lines 144-145 (method)
+  QuizDialog: lines 148-193 (class)
+  QuizDialog.__init__: lines 149-180 (method)
+  QuizDialog.update_quiz_id_preview: lines 182-183 (method)
+  QuizDialog.get_data: lines 185-193 (method)
+  QuestionDialog: lines 196-272 (class)
+  QuestionDialog.__init__: lines 197-242 (method)
+  QuestionDialog.toggle_choice_fields: lines 244-261 (method)
+  QuestionDialog.get_data: lines 263-272 (method)
+  QuestionManagerWindow: lines 275-383 (class)
+  QuestionManagerWindow.__init__: lines 276-303 (method)
+  QuestionManagerWindow.load_list: lines 305-321 (method)
+  QuestionManagerWindow.add_question: lines 323-339 (method)
+  QuestionManagerWindow.edit_question: lines 341-365 (method)
+  QuestionManagerWindow.delete_question: lines 367-383 (method)
+  QuizManagerWindow: lines 386-521 (class)
+  QuizManagerWindow.__init__: lines 387-413 (method)
+  QuizManagerWindow.load_table: lines 415-423 (method)
+  QuizManagerWindow.create_quiz: lines 425-459 (method)
+  QuizManagerWindow.manage_questions: lines 461-472 (method)
+  QuizManagerWindow.toggle_publish: lines 474-498 (method)
+  QuizManagerWindow.delete_quiz: lines 500-521 (method)
+  ProfessorLogin: lines 524-627 (class)
+  ProfessorLogin.__init__: lines 525-531 (method)
+  ProfessorLogin.initUI: lines 533-586 (method)
+  ProfessorLogin.toggle_password_visibility: lines 588-594 (method)
+  ProfessorLogin.reset_password_field: lines 596-598 (method)
+  ProfessorLogin.login: lines 600-614 (method)
+  ProfessorLogin.back_to_portal: lines 616-622 (method)
+  ProfessorLogin.closeEvent: lines 624-627 (method)
+  ProfessorDashboard: lines 630-1068 (class)
+  ProfessorDashboard.__init__: lines 631-640 (method)
+  ProfessorDashboard.initUI: lines 642-705 (method)
+  ProfessorDashboard.load_grade_table: lines 707-709 (method)
+  ProfessorDashboard.populate_table_with_data: lines 711-748 (method)
+  ProfessorDashboard.filter_students_by_name: lines 750-757 (method)
+  ProfessorDashboard.export_grade_report: lines 759-779 (method)
+  ProfessorDashboard.select_student: lines 781-785 (method)
+  ProfessorDashboard._quiz_picker: lines 787-800 (method)
+  ProfessorDashboard.add_student: lines 802-840 (method)
+  ProfessorDashboard.import_students: lines 842-894 (method)
+  ProfessorDashboard.edit_grade: lines 896-946 (method)
+  ProfessorDashboard.delete_student: lines 948-976 (method)
+  ProfessorDashboard.reopen_quiz: lines 978-1005 (method)
+  ProfessorDashboard.lock_grade: lines 1007-1045 (method)
+  ProfessorDashboard.quiz_manager: lines 1047-1049 (method)
+  ProfessorDashboard.logout: lines 1051-1059 (method)
+  ProfessorDashboard.closeEvent: lines 1061-1068 (method)
+
+IMPORTANT BEHAVIOR / LIMITATIONS
+  - The professor login uses the password hash stored in the auth CSV. Change the demo password before using real student data.
+  - Deleting a quiz should remove its metadata, question bank, grade column, and lock column when main.delete_quiz_data is available.
+  - CSV files do not provide safe multi-process transactions; simultaneous writes from multiple devices can still conflict.
+"""
 import sys
 import os
 import csv
@@ -9,9 +76,48 @@ from PyQt6.QtWidgets import (
     QHeaderView, QFormLayout, QDialogButtonBox, QSpinBox, QFileDialog,
     QAbstractItemView, QInputDialog, QTextEdit, QFrame
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize, QPointF
+from PyQt6.QtGui import QIcon, QPixmap, QPainter, QPen, QColor, QPainterPath
 
 import main
+
+def make_eye_icon(crossed: bool) -> QIcon:
+    """Draw an eye icon; with crossed=True a diagonal slash is added (password hidden)."""
+    scale = 3
+    size = 24 * scale
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.scale(scale, scale)
+
+    pen = QPen(QColor("#111111"), 2)
+    pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+    painter.setPen(pen)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+
+    outline = QPainterPath()
+    outline.moveTo(2, 12)
+    outline.quadTo(12, 1, 22, 12)
+    outline.quadTo(12, 23, 2, 12)
+    painter.drawPath(outline)
+
+    painter.setBrush(QColor("#111111"))
+    painter.drawEllipse(QPointF(12, 12), 3.2, 3.2)
+
+    if crossed:
+        # light halo so the slash stays readable over the eye outline
+        halo = QPen(QColor("#F1F5F9"), 5)
+        halo.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(halo)
+        painter.drawLine(QPointF(4.5, 4.5), QPointF(19.5, 19.5))
+        painter.setPen(pen)
+        painter.drawLine(QPointF(4.5, 4.5), QPointF(19.5, 19.5))
+
+    painter.end()
+    return QIcon(pixmap)
+
 
 class AddStudentDialog(QDialog):
     def __init__(self, parent=None):
@@ -103,9 +209,8 @@ class QuestionDialog(QDialog):
             layout.addRow(f"Option {i + 1}:", box)
             self.choice_rows.append(layout.rowCount() - 1)
 
-        self.correct_box = QSpinBox()
-        self.correct_box.setRange(1, 4)
-        layout.addRow("Correct Choice # (1=True for T/F):", self.correct_box)
+        self.correct_box = QComboBox()
+        layout.addRow("Correct Answer Choice:", self.correct_box)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
@@ -122,16 +227,31 @@ class QuestionDialog(QDialog):
             for i, box in enumerate(self.choice_inputs):
                 if i < len(choices):
                     box.setText(choices[i])
-            self.correct_box.setValue(existing.get("correct_index", existing.get("correct_option_index", 0)) + 1)
-
-        self.toggle_choice_fields(self.type_box.currentText())
+            
+            c_idx = existing.get("correct_index", existing.get("correct_option_index", 0))
+            self.toggle_choice_fields(self.type_box.currentText())
+            if 0 <= c_idx < self.correct_box.count():
+                self.correct_box.setCurrentIndex(c_idx)
+        else:
+            self.toggle_choice_fields(self.type_box.currentText())
 
     def toggle_choice_fields(self, qtype):
         is_mcq = (qtype == "Multiple Choice Question")
         form = self.layout()
         for row in self.choice_rows:
             form.setRowVisible(row, is_mcq)
-        self.correct_box.setRange(1, 4 if is_mcq else 2)
+        
+        current_idx = self.correct_box.currentIndex()
+        self.correct_box.clear()
+        if is_mcq:
+            self.correct_box.addItems(["Option 1", "Option 2", "Option 3", "Option 4"])
+        else:
+            self.correct_box.addItems(["True", "False"])
+
+        if 0 <= current_idx < self.correct_box.count():
+            self.correct_box.setCurrentIndex(current_idx)
+        else:
+            self.correct_box.setCurrentIndex(0)
         self.adjustSize()
 
     def get_data(self):
@@ -139,10 +259,10 @@ class QuestionDialog(QDialog):
         qtype = "MCQ" if qtype_ui == "Multiple Choice Question" else "TF"
         text = self.text_input.text().strip()
         if qtype == "MCQ":
-            choices = [box.text().strip() for box in self.choice_inputs if box.text().strip()]
+            choices = [box.text().strip() for box in self.choice_inputs]
         else:
             choices = ["True", "False"]
-        correct_index = self.correct_box.value() - 1
+        correct_index = self.correct_box.currentIndex()
         return {"qtype": qtype, "text": text, "choices": choices, "correct_index": correct_index}
 
 
@@ -152,15 +272,15 @@ class QuestionManagerWindow(QDialog):
         main.apply_app_icon(self)
         self.quiz_id = quiz_id
         self.setWindowTitle(f"Questions — {quiz_title}")
-        self.setMinimumSize(600, 520)
+        self.setMinimumSize(700, 520)
         layout = QVBoxLayout(self)
 
         self.count_label = QLabel()
         layout.addWidget(self.count_label)
 
         self.table = QTableWidget()
-        self.table.setColumnCount(2)
-        self.table.setHorizontalHeaderLabels(["Type", "Question"])
+        self.table.setColumnCount(3)
+        self.table.setHorizontalHeaderLabels(["Type", "Question", "Correct Answer"])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         layout.addWidget(self.table, 1)
@@ -183,8 +303,15 @@ class QuestionManagerWindow(QDialog):
         for row, question in enumerate(questions):
             qtype_mapped = "Multiple Choice Question" if question.get("qtype") == "MCQ" or len(question.get("choices", [])) == 4 else "True or False"
             q_text = question.get("text", question.get("question", ""))
+            
+            choices = question.get("choices", question.get("options", []))
+            c_idx = question.get("correct_index", question.get("correct_option_index", 0))
+            correct_text = choices[c_idx] if 0 <= c_idx < len(choices) else "N/A"
+
             self.table.setItem(row, 0, QTableWidgetItem(qtype_mapped))
             self.table.setItem(row, 1, QTableWidgetItem(q_text))
+            self.table.setItem(row, 2, QTableWidgetItem(correct_text))
+
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
     def add_question(self):
@@ -193,8 +320,11 @@ class QuestionManagerWindow(QDialog):
             return
         data = dialog.get_data()
 
-        if not data["text"] or len(data["choices"]) < 2:
-            QMessageBox.warning(self, "Missing Information", "Enter the question text and options.")
+        validation_error = main.validate_question(data) if hasattr(main, "validate_question") else (
+            "Enter the question text and options." if not data["text"] or len(data["choices"]) < 2 else ""
+        )
+        if validation_error:
+            QMessageBox.warning(self, "Invalid Question", validation_error)
             return
 
         questions = main.load_questions(self.quiz_id)
@@ -217,8 +347,11 @@ class QuestionManagerWindow(QDialog):
             return
         data = dialog.get_data()
 
-        if not data["text"] or len(data["choices"]) < 2:
-            QMessageBox.warning(self, "Missing Information", "Enter the question text and options.")
+        validation_error = main.validate_question(data) if hasattr(main, "validate_question") else (
+            "Enter the question text and options." if not data["text"] or len(data["choices"]) < 2 else ""
+        )
+        if validation_error:
+            QMessageBox.warning(self, "Invalid Question", validation_error)
             return
 
         questions[row] = data
@@ -258,21 +391,23 @@ class QuizManagerWindow(QDialog):
         self.table.setHorizontalHeaderLabels(["Quiz ID", "Title", "Category", "Max Items", "Time Limit", "Published", "Date Published"])
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table, 1)
+        self.status_label = QLabel("")
+        layout.addWidget(self.status_label)
 
         button_layout = QHBoxLayout()
         create_button = main.GradientButton("Create Quiz", clicked=self.create_quiz)
         questions_button = QPushButton("Manage Questions", clicked=self.manage_questions)
         publish_button = QPushButton("Publish / Unpublish", clicked=self.toggle_publish)
         delete_button = QPushButton("Delete Quiz", clicked=self.delete_quiz)
-        refresh_button = QPushButton("Refresh", clicked=self.load_table)
 
-        for btn in (create_button, questions_button, publish_button, delete_button, refresh_button):
+        for btn in (create_button, questions_button, publish_button, delete_button):
             button_layout.addWidget(btn)
 
         layout.addLayout(button_layout)
         self.load_table()
 
     def load_table(self):
+
         quizzes = main.load_quizzes()
         self.table.setRowCount(len(quizzes))
         for row, quiz in enumerate(quizzes):
@@ -345,9 +480,10 @@ class QuizManagerWindow(QDialog):
             quiz["published"], quiz["date_published"] = "no", ""
         else:
             question_count = len(main.load_questions(quiz["quiz_id"]))
-            if question_count < 10:
+            required = main.required_questions(quiz) if hasattr(main, "required_questions") else max(10, int(quiz.get("max_item", 10) or 10))
+            if question_count < required:
                 QMessageBox.warning(self, "Not Enough Questions",
-                    f"'{quiz['title']}' only has {question_count} question(s) saved. Add at least 10 via \"Manage Questions\" before publishing.")
+                    f"'{quiz['title']}' has {question_count} question(s). Add at least {required} before publishing.")
                 return
             quiz["published"] = "yes"
             quiz["date_published"] = main.get_spaced_now()
@@ -370,8 +506,12 @@ class QuizManagerWindow(QDialog):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        quizzes.pop(row)
-        main.save_quizzes(quizzes)
+        # Delete metadata, question bank, grades and lock column together when helper exists.
+        if hasattr(main, "delete_quiz_data"):
+            main.delete_quiz_data(quiz["quiz_id"])
+        else:
+            quizzes.pop(row)
+            main.save_quizzes(quizzes)
         self.load_table()
 
 
@@ -398,7 +538,27 @@ class ProfessorLogin(QWidget):
         self.password_input = QLineEdit()
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_input.returnPressed.connect(self.login)
-        layout.addWidget(self.password_input)
+
+        self.eye_open_icon = make_eye_icon(crossed=False)
+        self.eye_closed_icon = make_eye_icon(crossed=True)
+
+        self.toggle_pw_button = QPushButton()
+        self.toggle_pw_button.setObjectName("BtnSecondary")
+        self.toggle_pw_button.setCheckable(True)
+        self.toggle_pw_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.toggle_pw_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.toggle_pw_button.setStyleSheet("padding: 0px;")
+        self.toggle_pw_button.setIcon(self.eye_closed_icon)
+        self.toggle_pw_button.setIconSize(QSize(22, 22))
+        self.toggle_pw_button.setToolTip("Show password")
+        self.toggle_pw_button.setFixedSize(48, self.password_input.sizeHint().height())
+        self.toggle_pw_button.toggled.connect(self.toggle_password_visibility)
+
+        password_row = QHBoxLayout()
+        password_row.setSpacing(8)
+        password_row.addWidget(self.password_input, 1)
+        password_row.addWidget(self.toggle_pw_button)
+        layout.addLayout(password_row)
 
         login_button = main.GradientButton("Login", clicked=self.login)
         layout.addWidget(login_button)
@@ -407,12 +567,29 @@ class ProfessorLogin(QWidget):
         back_button.setObjectName("BtnSecondary")
         layout.addWidget(back_button)
 
-        hint = QLabel("Demo password: jabaiskript")
+        hint_text = (
+            "Demo password: jabaiskript"
+            if main.is_default_password()
+            else "Use your configured professor password."
+        )
+        hint = QLabel(hint_text)
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hint.setStyleSheet("color: gray;")
         layout.addWidget(hint)
 
         layout.addStretch()
+
+    def toggle_password_visibility(self, visible):
+        self.password_input.setEchoMode(
+            QLineEdit.EchoMode.Normal if visible else QLineEdit.EchoMode.Password
+        )
+        self.toggle_pw_button.setIcon(self.eye_open_icon if visible else self.eye_closed_icon)
+        self.toggle_pw_button.setToolTip("Hide password" if visible else "Show password")
+        self.password_input.setFocus()
+
+    def reset_password_field(self):
+        self.password_input.clear()
+        self.toggle_pw_button.setChecked(False)
 
     def login(self):
         password = self.password_input.text()
@@ -431,7 +608,7 @@ class ProfessorLogin(QWidget):
             QMessageBox.warning(self, "Access Denied", "Incorrect professor password.")
 
     def back_to_portal(self):
-        self.password_input.clear()
+        self.reset_password_field()
         if self.launcher_window:
             self.hide()
             self.launcher_window.show()
@@ -461,22 +638,16 @@ class ProfessorDashboard(QWidget):
         main_layout.setContentsMargins(25, 20, 25, 20)
         main_layout.setSpacing(15)
 
-        # Centered enlarged title + Upper Right Refresh button
         header_layout = QHBoxLayout()
         title = QLabel("PROFESSOR DASHBOARD")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("font-size: 24px; font-weight: bold; color: #111111;")
         
-        btn_refresh = main.GradientButton("Refresh", clicked=self.load_grade_table)
-        btn_refresh.setFixedWidth(120)
-
         header_layout.addStretch()
         header_layout.addWidget(title)
         header_layout.addStretch()
-        header_layout.addWidget(btn_refresh)
         main_layout.addLayout(header_layout)
 
-        # Search Bar
         search_layout = QHBoxLayout()
         search_layout.addWidget(QLabel("Search Student by Name:"))
         self.search_input = QLineEdit()
@@ -485,14 +656,12 @@ class ProfessorDashboard(QWidget):
         search_layout.addWidget(self.search_input)
         main_layout.addLayout(search_layout)
 
-        # Student Table
         self.student_table = QTableWidget()
         self.student_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.student_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.student_table.cellClicked.connect(self.select_student)
         main_layout.addWidget(self.student_table, 1)
 
-        # 2x4 Grid Buttons starting from Add Student
         btn_grid = QGridLayout()
         btn_grid.setSpacing(12)
 
@@ -506,13 +675,11 @@ class ProfessorDashboard(QWidget):
         btn_lock = main.GradientButton("Lock Grade", clicked=self.lock_grade)
         btn_quiz_mgr = main.GradientButton("Quiz Manager", clicked=self.quiz_manager)
 
-        # Row 1 (2x4)
         btn_grid.addWidget(btn_add, 0, 0)
         btn_grid.addWidget(btn_import, 0, 1)
         btn_grid.addWidget(btn_edit, 0, 2)
         btn_grid.addWidget(btn_delete, 0, 3)
 
-        # Row 2 (2x4)
         btn_grid.addWidget(btn_export, 1, 0)
         btn_grid.addWidget(btn_reopen, 1, 1)
         btn_grid.addWidget(btn_lock, 1, 2)
@@ -520,7 +687,6 @@ class ProfessorDashboard(QWidget):
 
         main_layout.addLayout(btn_grid)
 
-        # Bottom Bar with Logout anchored on the Right
         bottom_layout = QHBoxLayout()
         self.status_label = QLabel("Select a student row to perform student-specific actions.")
         
@@ -673,7 +839,7 @@ class ProfessorDashboard(QWidget):
             return
 
         try:
-            with open(filename, "r", newline="", encoding="utf-8") as file:
+            with open(filename, "r", newline="", encoding="utf-8-sig") as file:
                 imported = list(csv.DictReader(file))
             if not imported:
                 QMessageBox.warning(self, "Empty File", "The selected CSV file has no student records.")
@@ -747,7 +913,12 @@ class ProfessorDashboard(QWidget):
             QMessageBox.warning(self, "Grade Locked", "This grade has been permanently locked.")
             return
 
-        score, ok = QInputDialog.getInt(self, "Edit Grade", f"Enter score for {label}:", int(current) if current.isdigit() else 0, 0, 999999, 1)
+        quiz_info = next((q for q in main.load_quizzes() if q.get("quiz_id") == quiz_id), None)
+        try:
+            maximum = int(quiz_info.get("max_item", 999999)) if quiz_info else 999999
+        except (TypeError, ValueError):
+            maximum = 999999
+        score, ok = QInputDialog.getInt(self, "Edit Grade", f"Enter score for {label} (0–{maximum}):", int(current) if current.isdigit() else 0, 0, max(0, maximum), 1)
         if not ok:
             return
 
@@ -867,7 +1038,7 @@ class ProfessorDashboard(QWidget):
         self.load_grade_table()
         QMessageBox.information(self, "Grade Locked", "The grade is now permanently locked.")
 
-    def quiz_manager(self):
+    def quiz_manager(self): 
         QuizManagerWindow(self).exec()
         self.load_grade_table()
 
@@ -882,7 +1053,7 @@ class ProfessorDashboard(QWidget):
             self.close()
 
     def closeEvent(self, event):
-        self.login_window.password_input.clear()
+        self.login_window.reset_password_field()
         if self.launcher_window:
             self.login_window.hide()
             self.launcher_window.show()

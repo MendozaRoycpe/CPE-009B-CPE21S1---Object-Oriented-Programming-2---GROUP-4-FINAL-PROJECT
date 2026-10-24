@@ -27,7 +27,6 @@ QUIZZES_CSV = os.path.join(DATA_DIR, "quizzes.csv")
 AUTH_CSV = os.path.join(DATA_DIR, "professor_auth.csv")
 SESSIONS_CSV = os.path.join(DATA_DIR, "sessions.csv")
 
-# Dynamic icon path resolution
 ICON_PATH = os.path.join(BASE_DIR, "TIPlogo.ico")
 
 STUDENT_FIELDS = ["student_id", "name"]
@@ -90,7 +89,7 @@ def read_csv(filename: str) -> list:
 
 def write_csv(filename: str, rows: list, fieldnames: list):
     with open(filename, "w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer = csv.DictWriter(file, fieldnames=fieldnames, extrasaction='ignore')
         writer.writeheader()
         writer.writerows(rows)
 
@@ -246,13 +245,8 @@ def ensure_files():
             students.append(sample_student)
             save_students(students)
 
-def table_cell(text: str) -> QTableWidgetItem:
-    item = QTableWidgetItem(text)
-    item.setFlags(Qt.ItemFlag.ItemIsSelectable | Qt.ItemFlag.ItemIsEnabled)
-    return item
-
 # ==========================================
-# CUSTOM ANIMATED BUTTON (WITH ACTIVE CLICK BORDER HIGHLIGHT)
+# CUSTOM ANIMATED BUTTON
 # ==========================================
 class GradientButton(QPushButton):
     active_button = None
@@ -286,37 +280,30 @@ class GradientButton(QPushButton):
 
     def mousePressEvent(self, event):
         self._press = 1.0
-        
         if GradientButton.active_button and GradientButton.active_button != self:
             GradientButton.active_button._is_selected = False
             GradientButton.active_button.update()
-            
         GradientButton.active_button = self
         self._is_selected = True
-        
         self._timer.start()
         super().mousePressEvent(event)
 
     def _tick(self):
         target_hover = 1.0 if self.underMouse() else 0.0
         self._hover += (target_hover - self._hover) * 0.16
-        
         if self.underMouse():
             self._shift = (self._shift + 0.018) % 1.0
-            
         self._press *= 0.82
 
         if self._hover < 0.01 and self._press < 0.01 and not self.underMouse():
             self._hover = 0.0
             self._press = 0.0
             self._timer.stop()
-            
         self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        
         rect = QRectF(self.rect()).adjusted(3, 3, -3, -3)
         
         c1 = QColor("#FFD54F")
@@ -357,7 +344,7 @@ class GradientButton(QPushButton):
         painter.end()
 
 # ==========================================
-# CLEAN WHITE BACKGROUND + TIP GOLD ACCENTS
+# APP STYLE (Clean spinbox arrow triangles)
 # ==========================================
 APP_STYLE = """
 QWidget {
@@ -421,7 +408,7 @@ QPushButton#BtnSecondary:pressed, QPushButton#BtnSecondary:focus {
     border: 2px solid #D97706;
 }
 
-QLineEdit, QComboBox, QTextEdit, QSpinBox {
+QLineEdit, QComboBox, QTextEdit {
     background-color: #FFFFFF;
     border: 1px solid #CBD5E1;
     border-radius: 10px;
@@ -431,6 +418,63 @@ QLineEdit, QComboBox, QTextEdit, QSpinBox {
 QLineEdit:focus, QComboBox:focus, QTextEdit:focus, QSpinBox:focus {
     border: 2px solid #D97706;
     background-color: #FFFEF5;
+}
+
+QSpinBox {
+    background-color: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 10px;
+    padding-right: 28px;
+    color: #0F172A;
+}
+
+QSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 24px;
+    height: 14px;
+    border-left: 1px solid #CBD5E1;
+    border-bottom: 1px solid #CBD5E1;
+    border-top-right-radius: 9px;
+    background-color: #F8FAFC;
+}
+QSpinBox::up-button:hover {
+    background-color: #E2E8F0;
+}
+QSpinBox::up-arrow {
+    image: none;
+    background: transparent;
+    width: 0px;
+    height: 0px;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 5px solid #475569;
+    subcontrol-origin: padding;
+    subcontrol-position: center;
+}
+
+QSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 24px;
+    height: 14px;
+    border-left: 1px solid #CBD5E1;
+    border-bottom-right-radius: 9px;
+    background-color: #F8FAFC;
+}
+QSpinBox::down-button:hover {
+    background-color: #E2E8F0;
+}
+QSpinBox::down-arrow {
+    image: none;
+    background: transparent;
+    width: 0px;
+    height: 0px;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid #475569;
+    subcontrol-origin: padding;
+    subcontrol-position: center;
 }
 
 QRadioButton {
@@ -548,9 +592,6 @@ class MainLauncher(QWidget):
             app.quit()
         event.accept()
 
-# ==========================================
-# ENTRY POINT
-# ==========================================
 def main():
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("group4.quizsystem.app.1")
