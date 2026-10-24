@@ -98,7 +98,7 @@ from PyQt6.QtGui import (
 )
 
 # ---------------------------------------------------------------------------
-# Paths and schemas
+# Paths 
 # ---------------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -116,7 +116,7 @@ QUIZ_FIELDS = [
     "quiz_id", "title", "category", "max_item", "time_limit_minutes",
     "published", "date_published"
 ]
-# Kept compatible with the session format in the original main.py.
+
 SESSION_FIELDS = [
     "session_id", "student_id", "quiz_id", "score", "date_taken",
     "remarks", "device_id", "started_at"
