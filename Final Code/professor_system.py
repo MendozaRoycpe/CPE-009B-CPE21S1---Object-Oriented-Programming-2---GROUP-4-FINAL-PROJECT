@@ -142,8 +142,9 @@ class QuestionDialog(QDialog):
         self.choice_inputs = [QLineEdit() for _ in range(4)]
         self.choice_rows = []
         for i, box in enumerate(self.choice_inputs):
-            box.setPlaceholderText(f"Option {i + 1}")
-            layout.addRow(f"Option {i + 1}:", box)
+            letter = "ABCD"[i]
+            box.setPlaceholderText(f"Option {letter}")
+            layout.addRow(f"Option {letter}:", box)
             self.choice_rows.append(layout.rowCount() - 1)
 
         self.correct_box = QComboBox()
@@ -181,7 +182,7 @@ class QuestionDialog(QDialog):
         current_idx = self.correct_box.currentIndex()
         self.correct_box.clear()
         if is_mcq:
-            self.correct_box.addItems(["Option 1", "Option 2", "Option 3", "Option 4"])
+            self.correct_box.addItems(["A", "B", "C", "D"])
         else:
             self.correct_box.addItems(["True", "False"])
 
@@ -371,6 +372,24 @@ class QuizManagerWindow(QDialog):
             QMessageBox.warning(self, "Duplicate Quiz ID", "That Quiz ID already exists.")
             return
 
+        # Confirmation window: the quiz is only created if the professor clicks Yes.
+        confirm = QMessageBox(self)
+        main.apply_app_icon(confirm)
+        confirm.setIcon(QMessageBox.Icon.Question)
+        confirm.setWindowTitle("Confirm Quiz Creation")
+        confirm.setText("Do you want to create this quiz?")
+        confirm.setInformativeText(
+            f"Title: {data['title']}\n"
+            f"Category: {data['category']}\n"
+            f"Quiz ID: {data['quiz_id']}\n"
+            f"Maximum Items: {data['max_item']}\n"
+            f"Time Limit: {data['time_limit_minutes']} minute(s)"
+        )
+        confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        confirm.setDefaultButton(QMessageBox.StandardButton.No)
+        if confirm.exec() != QMessageBox.StandardButton.Yes:
+            return
+
         data["published"], data["date_published"] = "no", ""
         quizzes.append(data)
         main.save_quizzes(quizzes)
@@ -386,7 +405,15 @@ class QuizManagerWindow(QDialog):
             main.write_csv(main.STUDENTS_CSV, students, fields)
 
         self.load_table()
+<<<<<<< HEAD
         QMessageBox.information(self, "Quiz Created", f"Quiz '{data['quiz_id']}' created successfully.\nUse \"Manage Questions\" to build its question bank before publishing.")
+=======
+<<<<<<< HEAD
+        QMessageBox.information(self, "Quiz Created", f"Quiz '{data['quiz_id']}' created successfully.\nUse 'Manage Questions' to build its question bank before publishing.")
+=======
+        QMessageBox.information(self, "Quiz Created", f"Quiz '{data['quiz_id']}' created successfully.\nUse "Manage Questions" to build its question bank before publishing.")
+>>>>>>> 32140d9aa45b982ab57675f84ea158c5084c21d6
+>>>>>>> 2acffc87678210eebfa274bea5867244c5d3806f
 
     def manage_questions(self):
         row = self.table.currentRow()
@@ -412,15 +439,47 @@ class QuizManagerWindow(QDialog):
             return
 
         quiz = quizzes[row]
-        if quiz["published"] == "yes":
-            quiz["published"], quiz["date_published"] = "no", ""
-        else:
+        unpublishing = quiz["published"] == "yes"
+
+        if not unpublishing:
             question_count = len(main.load_questions(quiz["quiz_id"]))
             required = main.required_questions(quiz) if hasattr(main, "required_questions") else max(10, int(quiz.get("max_item", 10) or 10))
             if question_count < required:
                 QMessageBox.warning(self, "Not Enough Questions",
                     f"'{quiz['title']}' has {question_count} question(s). Add at least {required} before publishing.")
                 return
+
+        # Confirmation window: nothing changes unless the professor clicks Yes.
+        action = "unpublish" if unpublishing else "publish"
+        confirm = QMessageBox(self)
+        main.apply_app_icon(confirm)
+        confirm.setIcon(QMessageBox.Icon.Question)
+        confirm.setWindowTitle(f"Confirm {action.capitalize()}")
+        confirm.setText(f"Do you want to {action} this quiz?")
+        confirm.setInformativeText(
+            f"Title: {quiz['title']}\n"
+            f"Quiz ID: {quiz['quiz_id']}\n\n"
+            + ("Students will no longer be able to see or take it."
+               if unpublishing else
+               "Students will be able to see and take it.")
+        )
+        confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        confirm.setDefaultButton(QMessageBox.StandardButton.No)
+        if confirm.exec() != QMessageBox.StandardButton.Yes:
+            return
+
+        if unpublishing:
+            quiz["published"], quiz["date_published"] = "no", ""
+        else:
+<<<<<<< HEAD
+=======
+            question_count = len(main.load_questions(quiz["quiz_id"]))
+            required = main.required_questions(quiz) if hasattr(main, "required_questions") else max(10, int(quiz.get("max_item", 10) or 10))
+            if question_count < required:
+                QMessageBox.warning(self, "Not Enough Questions",
+                    f"'{quiz['title']}' has {question_count} question(s). Add at least {required} before publishing.")
+                return
+>>>>>>> 32140d9aa45b982ab57675f84ea158c5084c21d6
             quiz["published"] = "yes"
             quiz["date_published"] = main.get_spaced_now()
 

@@ -127,6 +127,19 @@ class ResultWindow(QWidget):  # shows results after a quiz
         score_lbl.setStyleSheet("font-size: 16px; color: #D97706;")
         layout.addWidget(score_lbl)
 
+        remark = main.calculate_remarks(correct, total)  # Excellent / Good / Fair / Poor
+        remark_colors = {
+            "Excellent": "#059669",  # green
+            "Good": "#2563EB",       # blue
+            "Fair": "#D97706",       # amber
+            "Poor": "#DC2626",       # red
+        }
+        remark_lbl = QLabel(f"Remarks: {remark}")
+        remark_lbl.setStyleSheet(
+            f"font-size: 22px; font-weight: bold; color: {remark_colors.get(remark, '#1E293B')};"
+        )
+        layout.addWidget(remark_lbl)
+
         results_list = QListWidget()
         for text, chosen_text, correct_text, is_correct in breakdown:  # loop through each question
             mark = "CORRECT" if is_correct else "WRONG"
