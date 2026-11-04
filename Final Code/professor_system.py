@@ -2,68 +2,6 @@
 
 PURPOSE
   Professor authentication, roster and grade management, quiz publication, question editing, grade locking, and reports.
-
-DEPENDENCIES
-  - PyQt6.
-  - Project main.py must provide CSV/data functions, shared styling, category metadata, and quiz validation helpers.
-
-FUNCTION / METHOD INDEX
-  make_eye_icon: lines 63-88 (function)
-  AddStudentDialog: lines 91-105 (class)
-  AddStudentDialog.__init__: lines 92-102 (method)
-  AddStudentDialog.get_data: lines 104-105 (method)
-  QuizDialog: lines 108-150 (class)
-  QuizDialog.__init__: lines 109-138 (method)
-  QuizDialog.update_quiz_id_preview: lines 140-141 (method)
-  QuizDialog.get_data: lines 143-150 (method)
-  QuestionDialog: lines 153-229 (class)
-  QuestionDialog.__init__: lines 154-199 (method)
-  QuestionDialog.toggle_choice_fields: lines 201-218 (method)
-  QuestionDialog.get_data: lines 220-229 (method)
-  QuestionManagerWindow: lines 232-340 (class)
-  QuestionManagerWindow.__init__: lines 233-260 (method)
-  QuestionManagerWindow.load_list: lines 262-278 (method)
-  QuestionManagerWindow.add_question: lines 280-296 (method)
-  QuestionManagerWindow.edit_question: lines 298-322 (method)
-  QuestionManagerWindow.delete_question: lines 324-340 (method)
-  QuizManagerWindow: lines 343-478 (class)
-  QuizManagerWindow.__init__: lines 344-370 (method)
-  QuizManagerWindow.load_table: lines 372-380 (method)
-  QuizManagerWindow.create_quiz: lines 382-416 (method)
-  QuizManagerWindow.manage_questions: lines 418-429 (method)
-  QuizManagerWindow.toggle_publish: lines 431-455 (method)
-  QuizManagerWindow.delete_quiz: lines 457-478 (method)
-  ProfessorLogin: lines 481-584 (class)
-  ProfessorLogin.__init__: lines 482-488 (method)
-  ProfessorLogin.initUI: lines 490-543 (method)
-  ProfessorLogin.toggle_password_visibility: lines 545-551 (method)
-  ProfessorLogin.reset_password_field: lines 553-555 (method)
-  ProfessorLogin.login: lines 557-571 (method)
-  ProfessorLogin.back_to_portal: lines 573-579 (method)
-  ProfessorLogin.closeEvent: lines 581-584 (method)
-  ProfessorDashboard: lines 587-1025 (class)
-  ProfessorDashboard.__init__: lines 588-597 (method)
-  ProfessorDashboard.initUI: lines 599-662 (method)
-  ProfessorDashboard.load_grade_table: lines 664-666 (method)
-  ProfessorDashboard.populate_table_with_data: lines 668-705 (method)
-  ProfessorDashboard.filter_students_by_name: lines 707-714 (method)
-  ProfessorDashboard.export_grade_report: lines 716-736 (method)
-  ProfessorDashboard.select_student: lines 738-742 (method)
-  ProfessorDashboard._quiz_picker: lines 744-757 (method)
-  ProfessorDashboard.add_student: lines 759-797 (method)
-  ProfessorDashboard.import_students: lines 799-851 (method)
-  ProfessorDashboard.edit_grade: lines 853-903 (method)
-  ProfessorDashboard.delete_student: lines 905-933 (method)
-  ProfessorDashboard.reopen_quiz: lines 935-962 (method)
-  ProfessorDashboard.lock_grade: lines 964-1002 (method)
-  ProfessorDashboard.quiz_manager: lines 1004-1006 (method)
-  ProfessorDashboard.logout: lines 1008-1016 (method)
-  ProfessorDashboard.closeEvent: lines 1018-1025 (method)
-
-IMPORTANT BEHAVIOR / LIMITATIONS
-  - The professor login uses the password hash stored in the auth CSV. Change the demo password before using real student data.
-  - Deleting a quiz should remove its metadata, question bank, grade column, and lock column when main.delete_quiz_data is available.
-  - CSV files do not provide safe multi-process transactions; simultaneous writes from multiple devices can still conflict.
 """
 import sys
 import os
@@ -107,7 +45,6 @@ def make_eye_icon(crossed: bool) -> QIcon:
     painter.drawEllipse(QPointF(12, 12), 3.2, 3.2)
 
     if crossed:
-        # light halo so the slash stays readable over the eye outline
         halo = QPen(QColor("#F1F5F9"), 5)
         halo.setCapStyle(Qt.PenCapStyle.RoundCap)
         painter.setPen(halo)
@@ -407,7 +344,6 @@ class QuizManagerWindow(QDialog):
         self.load_table()
 
     def load_table(self):
-
         quizzes = main.load_quizzes()
         self.table.setRowCount(len(quizzes))
         for row, quiz in enumerate(quizzes):
@@ -450,7 +386,7 @@ class QuizManagerWindow(QDialog):
             main.write_csv(main.STUDENTS_CSV, students, fields)
 
         self.load_table()
-        QMessageBox.information(self, "Quiz Created", f"Quiz '{data['quiz_id']}' created successfully.\nUse "Manage Questions" to build its question bank before publishing.")
+        QMessageBox.information(self, "Quiz Created", f"Quiz '{data['quiz_id']}' created successfully.\nUse \"Manage Questions\" to build its question bank before publishing.")
 
     def manage_questions(self):
         row = self.table.currentRow()
@@ -506,7 +442,6 @@ class QuizManagerWindow(QDialog):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        # Delete metadata, question bank, grades and lock column together when helper exists.
         if hasattr(main, "delete_quiz_data"):
             main.delete_quiz_data(quiz["quiz_id"])
         else:
