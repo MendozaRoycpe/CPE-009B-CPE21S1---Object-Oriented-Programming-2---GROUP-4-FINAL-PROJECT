@@ -6,17 +6,42 @@ import socket
 import hashlib
 import random
 import ctypes
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QLineEdit, QPushButton, QMessageBox, QTableWidget, QTableWidgetItem, 
-    QComboBox, QTextEdit, QFrame, QHeaderView, QRadioButton, QButtonGroup, 
+    QComboBox, QTextEdit, QFrame, QHeaderView, QRadioButton, QButtonGroup,
     QProgressBar, QStackedWidget, QSizePolicy, QScrollArea, QListWidget, QListWidgetItem,
-    QFormLayout, QDialogButtonBox, QSpinBox, QFileDialog, QAbstractItemView, QGraphicsOpacityEffect
+    QFormLayout, QDialogButtonBox, QSpinBox, QFileDialog, QAbstractItemView, QGraphicsOpacityEffect,
+    QInputDialog,
 )
-from PyQt6.QtCore import Qt, QTimer, QRegularExpression, QEvent, QPropertyAnimation, QEasingCurve, QRectF, QPointF
-from PyQt6.QtGui import QRegularExpressionValidator, QIcon, QPixmap, QColor, QPainter, QLinearGradient, QPen, QFont, QPainterPath, QBrush
+from PyQt6.QtCore import Qt, QTimer, QEvent, QPropertyAnimation, QEasingCurve, QRectF, QPointF
+from PyQt6.QtGui import QIcon, QColor, QPainter, QLinearGradient, QPen, QFont, QPainterPath, QBrush
+
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# FUNCTIONS / METHODS LIST (single-file "compilation" build of the Group 4 quiz system):
+# - apply_app_icon(widget), hash_password(password), get_device_id(), get_spaced_now()
+# - calculate_remarks(score, total), apply_fade_in(widget, duration)
+# - read_csv(filename), write_csv(filename, rows, fieldnames), get_student_fields()
+# - load_students()/save_students(), load_retired_ids()/save_retired_ids()
+# - load_quizzes()/save_quizzes(), questions_path(quiz_id), load_questions()/save_questions()
+# - generate_quiz_id(category), compute_total_and_remark(student, quizzes)
+# - load_sessions()/save_sessions(), start_session(student_id), end_session(student_id),
+#   log_conflict(student_id, issue_type)
+# - generate_auto_questions(count), ensure_files(), table_cell(text)
+#
+# CLASSES:
+# - GradientButton — T.I.P.-gold animated hover/press button
+# - AddStudentDialog, QuizDialog, QuestionDialog, GradebookDialog (anti-cheat audit log
+#   viewer), FullscreenPromptDialog (pre-quiz proctoring notice)
+# - QuestionManagerWindow, QuizManagerWindow
+# - ProfessorLogin, ProfessorDashboard
+# - StudentLogin, StudentDashboard, MyGradesWindow, TakeQuizWindow (fullscreen, proctored,
+#   logs focus loss via log_conflict), ResultWindow
+# - MainLauncher — role-select portal; entry point is main()
+#
+#xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # ==========================================
 # FILE PATHS & STORAGE INITIALIZATION
@@ -26,6 +51,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 QUESTIONS_DIR = os.path.join(DATA_DIR, "questions")
 
 STUDENTS_CSV = os.path.join(DATA_DIR, "students.csv")
+STUDENTS_FILE = STUDENTS_CSV  # alias: several GUI methods below write students via this name
 RETIRED_CSV = os.path.join(DATA_DIR, "retired_ids.csv")
 QUIZZES_CSV = os.path.join(DATA_DIR, "quizzes.csv")
 AUTH_CSV = os.path.join(DATA_DIR, "professor_auth.csv")
@@ -106,7 +132,15 @@ def get_student_fields() -> list:
         return STUDENT_FIELDS.copy()
     with open(STUDENTS_CSV, "r", newline="", encoding="utf-8") as file:
         header = next(csv.reader(file), None)
-    return header if header else STUDENT_FIELDS.copy()
+    fields = header if header else STUDENT_FIELDS.copy()
+    # Self-heal: a students.csv left over from an older/broken run of this script
+    # may have a header missing "student_id" or "name" (e.g. just ["student_id"]).
+    # Blindly trusting that header made every later write silently drop the
+    # missing column and then crash ("dict contains fields not in fieldnames")
+    # the moment a row with that column was written. Always guarantee the two
+    # required columns are present, in front, regardless of what's on disk.
+    missing_required = [f for f in STUDENT_FIELDS if f not in fields]
+    return missing_required + fields if missing_required else fields
 
 def load_students() -> list:
     return read_csv(STUDENTS_CSV)
@@ -337,7 +371,10 @@ def ensure_files():
             for q in default_quizzes:
                 sample_student[q["quiz_id"]] = ""
             students.append(sample_student)
-            save_students(students)
+            # Use the sample student's own keys as the header — get_student_fields()/
+            # save_students() would read the CSV header written moments ago (just
+            # student_id, name) and crash on the extra quiz-id columns below.
+            write_csv(STUDENTS_CSV, students, list(sample_student.keys()))
 
 def table_cell(text: str) -> QTableWidgetItem:
     item = QTableWidgetItem(text)
@@ -656,14 +693,21 @@ class QuestionDialog(QDialog):
 
         self.choice_inputs = [QLineEdit() for _ in range(4)]
         self.choice_rows = []
+        self.choice_letters = ["A", "B", "C", "D"]
         for i, box in enumerate(self.choice_inputs):
-            box.setPlaceholderText(f"Choice {i + 1}")
-            layout.addRow(f"Choice {i + 1}:", box)
+            box.setPlaceholderText(f"Choice {self.choice_letters[i]}")
+            # Keep the "Correct Answer" dropdown's A/B/C/D labels in sync with
+            # whatever the professor is currently typing in each choice box.
+            box.textChanged.connect(self.refresh_correct_choices)
+            layout.addRow(f"Choice {self.choice_letters[i]}:", box)
             self.choice_rows.append(layout.rowCount() - 1)
 
-        self.correct_box = QSpinBox()
-        self.correct_box.setRange(1, 4)
-        layout.addRow("Correct Choice # (1=True for T/F):", self.correct_box)
+        # Was a QSpinBox limited to typing a bare number (and the TF toggle
+        # capped it at 1-2, which read as "only 1 or 2 can ever be correct").
+        # A dropdown of A/B/C/D (or True/False) is both clearer and removes
+        # the chance of an out-of-range number ever reaching correct_index.
+        self.correct_combo = QComboBox()
+        layout.addRow("Correct Answer:", self.correct_combo)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
@@ -680,7 +724,7 @@ class QuestionDialog(QDialog):
             for i, box in enumerate(self.choice_inputs):
                 if i < len(choices):
                     box.setText(choices[i])
-            self.correct_box.setValue(existing.get("correct_index", 0) + 1)
+            self.correct_combo.setCurrentIndex(existing.get("correct_index", 0))
 
         self.toggle_choice_fields(self.type_box.currentText())
 
@@ -689,18 +733,39 @@ class QuestionDialog(QDialog):
         form = self.layout()
         for row in self.choice_rows:
             form.setRowVisible(row, is_mcq)
-        self.correct_box.setRange(1, 4 if is_mcq else 2)
+        self.refresh_correct_choices()
         self.adjustSize()
+
+    def refresh_correct_choices(self):
+        is_mcq = (self.type_box.currentText() == "Multiple Choice Question")
+        previous_index = self.correct_combo.currentIndex()
+        self.correct_combo.blockSignals(True)
+        self.correct_combo.clear()
+        if is_mcq:
+            for i, box in enumerate(self.choice_inputs):
+                entered = box.text().strip()
+                label = f"{self.choice_letters[i]}. {entered}" if entered else f"{self.choice_letters[i]} (empty)"
+                self.correct_combo.addItem(label)
+        else:
+            self.correct_combo.addItems(["True", "False"])
+        if 0 <= previous_index < self.correct_combo.count():
+            self.correct_combo.setCurrentIndex(previous_index)
+        self.correct_combo.blockSignals(False)
 
     def get_data(self):
         qtype_ui = self.type_box.currentText()
         qtype = "MCQ" if qtype_ui == "Multiple Choice Question" else "TF"
         text = self.text_input.text().strip()
         if qtype == "MCQ":
-            choices = [box.text().strip() for box in self.choice_inputs if box.text().strip()]
+            # Keep all four slots (even a still-blank one) so that choice index
+            # i always lines up with letter choice_letters[i] and with whatever
+            # the professor picked in the Correct Answer dropdown. Filtering
+            # out blanks here used to silently shift later choices down a slot,
+            # which could save the wrong option as "correct".
+            choices = [box.text().strip() for box in self.choice_inputs]
         else:
             choices = ["True", "False"]
-        correct_index = self.correct_box.value() - 1
+        correct_index = self.correct_combo.currentIndex()
         return {"qtype": qtype, "text": text, "choices": choices, "correct_index": correct_index}
 
 class GradebookDialog(QDialog):
@@ -873,14 +938,32 @@ class QuestionManagerWindow(QDialog):
             self.table.setItem(row, 1, QTableWidgetItem(question.get("text", "")))
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
+    def _question_validation_error(self, data):
+        """Returns an error message if data isn't safe to save, else None.
+        Also guards against a blank MCQ choice, which used to get silently
+        dropped at save time and shift the remaining choices (and therefore
+        correct_index) out of alignment with the Correct Answer dropdown."""
+        if not data["text"]:
+            return "Enter the question text."
+        if data["qtype"] == "MCQ":
+            if any(not choice for choice in data["choices"]):
+                return "Fill in all four choices (A-D) for a Multiple Choice Question."
+            if not (0 <= data["correct_index"] < len(data["choices"])):
+                return "Select which choice (A-D) is correct."
+        else:
+            if not (0 <= data["correct_index"] < len(data["choices"])):
+                return "Select True or False as the correct answer."
+        return None
+
     def add_question(self):
         dialog = QuestionDialog(self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         data = dialog.get_data()
 
-        if not data["text"] or len(data["choices"]) < 2:
-            QMessageBox.warning(self, "Missing Information", "Enter the question text and options.")
+        error = self._question_validation_error(data)
+        if error:
+            QMessageBox.warning(self, "Missing Information", error)
             return
 
         questions = load_questions(self.quiz_id)
@@ -903,8 +986,9 @@ class QuestionManagerWindow(QDialog):
             return
         data = dialog.get_data()
 
-        if not data["text"] or len(data["choices"]) < 2:
-            QMessageBox.warning(self, "Missing Information", "Enter the question text and options.")
+        error = self._question_validation_error(data)
+        if error:
+            QMessageBox.warning(self, "Missing Information", error)
             return
 
         questions[row] = data
