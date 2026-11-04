@@ -469,7 +469,11 @@ class QuizManagerWindow(QDialog):
             main.write_csv(main.STUDENTS_CSV, students, fields)
 
         self.load_table()
+<<<<<<< HEAD
         QMessageBox.information(self, "Quiz Created", f"Quiz '{data['quiz_id']}' created successfully.\nUse 'Manage Questions' to build its question bank before publishing.")
+=======
+        QMessageBox.information(self, "Quiz Created", f"Quiz '{data['quiz_id']}' created successfully.\nUse "Manage Questions" to build its question bank before publishing.")
+>>>>>>> 32140d9aa45b982ab57675f84ea158c5084c21d6
 
     def manage_questions(self):
         row = self.table.currentRow()
@@ -527,6 +531,15 @@ class QuizManagerWindow(QDialog):
         if unpublishing:
             quiz["published"], quiz["date_published"] = "no", ""
         else:
+<<<<<<< HEAD
+=======
+            question_count = len(main.load_questions(quiz["quiz_id"]))
+            required = main.required_questions(quiz) if hasattr(main, "required_questions") else max(10, int(quiz.get("max_item", 10) or 10))
+            if question_count < required:
+                QMessageBox.warning(self, "Not Enough Questions",
+                    f"'{quiz['title']}' has {question_count} question(s). Add at least {required} before publishing.")
+                return
+>>>>>>> 32140d9aa45b982ab57675f84ea158c5084c21d6
             quiz["published"] = "yes"
             quiz["date_published"] = main.get_spaced_now()
 
